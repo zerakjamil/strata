@@ -1,0 +1,68 @@
+{
+    "name": "zerakjamil/strata",
+    "description": "High-performance hybrid search engine for Laravel (<1ms HTTP cycle, 1.5M+ records, immutable segments, BM25 + quantized vector RRF)",
+    "keywords": [
+        "laravel",
+        "search",
+        "hybrid-search",
+        "bm25",
+        "vector-search",
+        "nixiesearch",
+        "mmap",
+        "octane",
+        "scout"
+    ],
+    "license": "MIT",
+    "type": "library",
+    "authors": [
+        {
+            "name": "zerak jamil",
+            "email": "zerak@ayewar.com",
+            "role": "Creator & Lead Architect"
+        }
+    ],
+    "require": {
+        "php": "^8.2 || ^8.3 || ^8.4 || ^8.5",
+        "ext-json": "*",
+        "illuminate/support": "^10.0 || ^11.0 || ^12.0",
+        "illuminate/console": "^10.0 || ^11.0 || ^12.0",
+        "illuminate/database": "^10.0 || ^11.0 || ^12.0"
+    },
+    "require-dev": {
+        "fakerphp/faker": "^1.23",
+        "laravel/scout": "^10.0",
+        "mockery/mockery": "^1.6",
+        "orchestra/testbench": "^8.0 || ^9.0 || ^10.0",
+        "phpunit/phpunit": "^10.5 || ^11.0"
+    },
+    "suggest": {
+        "laravel/octane": "Required to achieve sub-millisecond (<1ms) end-to-end HTTP response cycles with persistent in-memory segments",
+        "laravel/scout": "Enables seamless Scout driver integration for Eloquent models",
+        "ext-ffi": "Enables zero-copy C-level memory mapped index reading for highest throughput"
+    },
+    "autoload": {
+        "psr-4": {
+            "Strata\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Strata\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Strata\\StrataServiceProvider"
+            ],
+            "aliases": {
+                "Strata": "Strata\\Facades\\Strata"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

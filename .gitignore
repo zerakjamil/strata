@@ -1,0 +1,10 @@
+/vendor/
+composer.lock
+.phpunit.result.cache
+.env
+.env.backup
+.DS_Store
+storage/*.seg
+storage/*.json
+storage/benchmarks/
+.phpunit.cache/
