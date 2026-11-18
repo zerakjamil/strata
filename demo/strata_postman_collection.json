@@ -1,0 +1,120 @@
+{
+  "info": {
+    "_postman_id": "7b8e1a2f-9c4d-4e5a-8b6f-123456789abc",
+    "name": "Strata vs PostgreSQL Search Benchmark",
+    "description": "Head-to-head comparison between Strata In-Process (<1ms) and native PostgreSQL GIN Full-Text Search.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Strata - Multi-Term Search (<1ms)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "http://localhost:8001/api/search?q=mechanical+keyboard&limit=10&status=active",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8001",
+          "path": ["api", "search"],
+          "query": [
+            { "key": "q", "value": "mechanical keyboard" },
+            { "key": "limit", "value": "10" },
+            { "key": "status", "value": "active" }
+          ]
+        },
+        "description": "Queries 1.5M records via Strata In-Process Fast-Path projection."
+      }
+    },
+    {
+      "name": "2. PostgreSQL Baseline - Multi-Term Search",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "http://localhost:8002/api/search?q=mechanical+keyboard&limit=10&status=active",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8002",
+          "path": ["api", "search"],
+          "query": [
+            { "key": "q", "value": "mechanical keyboard" },
+            { "key": "limit", "value": "10" },
+            { "key": "status", "value": "active" }
+          ]
+        },
+        "description": "Queries 1.5M records via PostgreSQL to_tsvector + GIN index."
+      }
+    },
+    {
+      "name": "3. Strata - Single-Term Query (<0.5ms)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "http://localhost:8001/api/search?q=keyboard&limit=10",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8001",
+          "path": ["api", "search"],
+          "query": [
+            { "key": "q", "value": "keyboard" },
+            { "key": "limit", "value": "10" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. PostgreSQL Baseline - Single-Term Query",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "http://localhost:8002/api/search?q=keyboard&limit=10",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8002",
+          "path": ["api", "search"],
+          "query": [
+            { "key": "q", "value": "keyboard" },
+            { "key": "limit", "value": "10" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Strata Healthcheck",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8001/api/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8001",
+          "path": ["api", "health"]
+        }
+      }
+    },
+    {
+      "name": "6. PostgreSQL Service Healthcheck",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8002/api/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8002",
+          "path": ["api", "health"]
+        }
+      }
+    }
+  ]
+}

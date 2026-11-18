@@ -1,5 +1,5 @@
 {
-    "name": "zerakjamil/strata",
+    "name": "ayewar/strata",
     "description": "High-performance hybrid search engine for Laravel (<1ms HTTP cycle, 1.5M+ records, immutable segments, BM25 + quantized vector RRF)",
     "keywords": [
         "laravel",

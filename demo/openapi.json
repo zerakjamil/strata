@@ -1,0 +1,136 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Strata vs PostgreSQL Search Benchmark API",
+    "description": "Side-by-side comparison between Strata In-Process Hybrid Search and native PostgreSQL GIN Full-Text Search.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8001",
+      "description": "Strata Accelerated Service (Port 8001)"
+    },
+    {
+      "url": "http://localhost:8002",
+      "description": "PostgreSQL Baseline Service (Port 8002)"
+    }
+  ],
+  "paths": {
+    "/api/search": {
+      "get": {
+        "summary": "Execute search query across 1.5M records",
+        "description": "Returns matching product records sorted by relevance score. Compare latency headers between Strata (port 8001) and PostgreSQL (port 8002).",
+        "operationId": "searchProducts",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search keyword or phrase",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "mechanical keyboard"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of records to return",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "example": 10
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by product status",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["active", "inactive"],
+              "example": "active"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful search query response",
+            "headers": {
+              "X-Search-Engine": {
+                "schema": {
+                  "type": "string",
+                  "example": "Strata-In-Process-FastPath"
+                },
+                "description": "Engine used to execute the search"
+              },
+              "X-Execution-Time-Ms": {
+                "schema": {
+                  "type": "string",
+                  "example": "0.482ms"
+                },
+                "description": "Execution latency in milliseconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "integer", "example": 14205 },
+                          "title": { "type": "string", "example": "Mechanical Keyboard Pro Edition" },
+                          "slug": { "type": "string", "example": "mechanical-keyboard-pro-14205" },
+                          "price": { "type": "number", "format": "float", "example": 129.99 },
+                          "status": { "type": "string", "example": "active" },
+                          "_score": { "type": "number", "format": "float", "example": 4.52 }
+                        }
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "count": { "type": "integer", "example": 10 },
+                        "query": { "type": "string", "example": "mechanical keyboard" },
+                        "engine": { "type": "string", "example": "Strata" },
+                        "latency_ms": { "type": "number", "format": "float", "example": 0.482 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Healthcheck endpoint",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Service is healthy and index is loaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "healthy" },
+                    "engine": { "type": "string", "example": "strata" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

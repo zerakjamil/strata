@@ -1,22 +1,93 @@
+![Strata](art/strata-lockup.svg)
+
 # Strata
 
-Strata is an in-process, high-throughput hybrid search engine package for Laravel. It provides sub-millisecond query execution across 1,500,000+ records by coupling immutable memory-mapped binary segment files with persistent worker runtimes like Laravel Octane.
+Strata is a high-throughput hybrid search engine package for Laravel. It provides sub-millisecond query execution over 1,500,000+ records by coupling immutable binary segment files with persistent runtimes like Laravel Octane.
 
-## Highlights
+Canonical records remain safely stored in PostgreSQL, while Strata serves real-time sub-millisecond searches.
 
-- **Dual-Modal Retrieval**: Combines BM25 lexical scoring with scalar-quantized dense vector similarity via Reciprocal Rank Fusion (RRF).
-- **Zero-Copy Memory-Mapped Segments**: Operates directly on binary `.seg` files via operating system virtual memory mapping (`mmap`), bypassing PHP garbage collection overhead.
-- **Fast-Path Columnar DocStore**: Projects pre-serialized JSON records directly from memory in <0.1ms, eliminating database hydration bottlenecks during search queries.
-- **Laravel Scout Driver**: Seamlessly hooks into Eloquent model events and Scout query builders.
-- **PostgreSQL 1.5M Benchmark**: Includes automated seeding and benchmark tools comparing raw PostgreSQL queries with Strata.
+## Architecture
 
-## Requirements
+- **Hybrid Search**: Fuses BM25 lexical ranking and 8-bit quantized dense vector similarity via Reciprocal Rank Fusion.
+- **Fast-Path Columnar DocStore**: Streams pre-serialized JSON records from memory in under 0.1ms without Eloquent model hydration or database queries.
+- **Zero JVM Dependencies**: In-process engine operating on memory-mapped segment files with no external search clusters.
+- **Laravel Scout Driver**: Implements Laravel Scout contracts for Eloquent models.
+- **Octane Pre-Warming**: Pre-warms index dictionaries on worker boot.
 
-- PHP 8.2 or higher
-- Laravel 10.x, 11.x, or 12.x
-- PostgreSQL 15+ (for data storage and benchmarks)
-- Laravel Octane (recommended for sub-millisecond end-to-end HTTP responses)
+## Installation
+
+```bash
+composer require ayewar/strata
+```
+
+## Quick Start
+
+### Fast-Path Query
+
+```php
+use Strata\Facades\Strata;
+
+$results = Strata::index('products')
+    ->query('mechanical keyboard')
+    ->filter(['status' => 'active'])
+    ->fast()
+    ->limit(10)
+    ->get();
+```
+
+### Laravel Scout Model
+
+```php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Laravel\Scout\Searchable;
+
+class Product extends Model
+{
+    use Searchable;
+
+    public function toSearchableArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'title' => $this->title,
+            'description' => $this->description,
+            'price' => (float) $this->price,
+        ];
+    }
+}
+```
+
+```php
+$products = Product::search('ergonomic chair')->paginate(20);
+```
+
+### Search API Endpoint
+
+```http
+GET /api/strata/search?q=keyboard&limit=10&status=active
+```
+
+## PostgreSQL 1.5M Row Benchmark
+
+Tested on a local PostgreSQL database with 1,500,000 synthetic products:
+
+- **Single-term query ('keyboard')**:
+  - PostgreSQL GIN: P50 = 1.55 ms (~586 QPS)
+  - Strata Fast-Path: P50 = 0.48 ms (~2,035 QPS) (3.2x faster)
+- **Multi-term query ('mechanical keyboard')**:
+  - PostgreSQL GIN: P50 = 14.86 ms (~67 QPS)
+  - Strata Fast-Path: P50 = 1.65 ms (~566 QPS) (9.0x faster)
+
+## Artisan Commands
+
+- `php artisan strata:seed --count=1500000`: Seeds PostgreSQL with synthetic records.
+- `php artisan strata:index`: Compiles table records into immutable `.seg` files.
+- `php artisan strata:compact`: Consolidates delta segments into master segments.
+- `php artisan strata:status`: Inspects active segments and storage metrics.
+- `php artisan strata:benchmark`: Runs head-to-head latency comparisons against PostgreSQL GIN.
 
 ## License
 
-This package is open-source software licensed under the MIT license.
+Open-source software licensed under the MIT license.

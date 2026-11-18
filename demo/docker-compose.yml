@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: strata_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: strata_demo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d strata_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  strata-api:
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile
+    container_name: strata_fastpath_api
+    restart: unless-stopped
+    command: ["php", "-S", "0.0.0.0:80", "demo/strata-server.php"]
+    environment:
+      STRATA_PATH: /app/storage/strata
+    ports:
+      - "8001:80"
+    volumes:
+      - ../storage/strata:/app/storage/strata:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres-baseline-api:
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile
+    container_name: strata_postgres_baseline_api
+    restart: unless-stopped
+    command: ["php", "-S", "0.0.0.0:80", "demo/postgres-server.php"]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: strata_demo
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+    ports:
+      - "8002:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
