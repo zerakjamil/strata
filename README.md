@@ -1,4 +1,10 @@
-![Strata](art/strata-lockup.svg)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="art/strata-lockup-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="art/strata-lockup-light.svg">
+    <img alt="Strata" src="art/strata-lockup-light.svg" width="540">
+  </picture>
+</p>
 
 # Strata
 
