@@ -1,0 +1,11 @@
+providers:
+  - Strata\StrataServiceProvider
+  - Laravel\Scout\ScoutServiceProvider
+
+env:
+  DB_CONNECTION: pgsql
+  DB_HOST: 127.0.0.1
+  DB_PORT: 5432
+  DB_DATABASE: strata_bench
+  DB_USERNAME: zerakjamil
+  DB_PASSWORD: ''

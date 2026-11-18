@@ -12,6 +12,7 @@ abstract class TestCase extends OrchestraTestCase
     protected function getPackageProviders($app): array
     {
         return [
+            \Laravel\Scout\ScoutServiceProvider::class,
             StrataServiceProvider::class,
         ];
     }

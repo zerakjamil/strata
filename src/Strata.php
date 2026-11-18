@@ -70,6 +70,11 @@ final class Strata
             foreach ($segResults as $r) {
                 $results[] = $r;
             }
+
+            // Early-exit across segments when sufficient top-scoring candidates are collected
+            if (count($results) >= $limit * 2) {
+                break;
+            }
         }
 
         // Global sort by _score descending

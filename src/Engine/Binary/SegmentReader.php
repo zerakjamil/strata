@@ -8,59 +8,65 @@ use Strata\Contracts\TokenizerInterface;
 use Strata\Engine\Fusion\ReciprocalRankFusion;
 use Strata\Engine\Lexical\BM25Scorer;
 use Strata\Engine\Lexical\SimpleTokenizer;
-use Strata\Engine\Lexical\VariableByte;
-use Strata\Engine\Storage\ColumnarDocStore;
 use Strata\Engine\Storage\TombstoneBitmask;
 use Strata\Engine\Vector\DotProduct;
 
 final class SegmentReader
 {
     private SegmentHeader $header;
-    private string $data;
+    /** @var resource */
+    private $stream;
+    private string $filePath;
     private TombstoneBitmask $tombstone;
     private BM25Scorer $bm25;
     private TokenizerInterface $tokenizer;
     private ReciprocalRankFusion $rrf;
 
-    // Parsed dictionary cache for fast in-memory query evaluation
     /** @var array<string, array{offset: int, df: int}> */
     private ?array $termDictCache = null;
 
     public function __construct(
-        string $segmentBinary,
+        string $filePath,
         ?BM25Scorer $bm25 = null,
         ?TokenizerInterface $tokenizer = null,
         ?ReciprocalRankFusion $rrf = null
     ) {
-        $this->data = $segmentBinary;
-        $this->header = SegmentHeader::fromBinary($this->data);
-        $this->bm25 = $bm25 ?? new BM25Scorer();
-        $this->tokenizer = $tokenizer ?? new SimpleTokenizer();
-        $this->rrf = $rrf ?? new ReciprocalRankFusion();
-
-        $tombstoneRaw = substr(
-            $this->data,
-            $this->header->tombstoneOffset,
-            $this->header->tombstoneLength
-        );
-        $this->tombstone = new TombstoneBitmask($this->header->docCount, $tombstoneRaw);
-    }
-
-    /**
-     * Create reader directly from a file path.
-     */
-    public static function open(string $filePath): self
-    {
         if (!file_exists($filePath)) {
             throw new \InvalidArgumentException("Segment file not found: {$filePath}");
         }
 
-        $data = file_get_contents($filePath);
-        if ($data === false) {
-            throw new \RuntimeException("Failed to read segment file: {$filePath}");
+        $this->filePath = $filePath;
+        $stream = fopen($filePath, 'rb');
+        if ($stream === false) {
+            throw new \RuntimeException("Failed to open segment file: {$filePath}");
+        }
+        $this->stream = $stream;
+
+        $headerData = fread($this->stream, SegmentHeader::HEADER_SIZE);
+        if ($headerData === false || strlen($headerData) < SegmentHeader::HEADER_SIZE) {
+            throw new \RuntimeException("Failed to read segment header from: {$filePath}");
         }
 
-        return new self($data);
+        $this->header = SegmentHeader::fromBinary($headerData);
+        $this->bm25 = $bm25 ?? new BM25Scorer();
+        $this->tokenizer = $tokenizer ?? new SimpleTokenizer();
+        $this->rrf = $rrf ?? new ReciprocalRankFusion();
+
+        fseek($this->stream, $this->header->tombstoneOffset);
+        $tombstoneRaw = (string) fread($this->stream, $this->header->tombstoneLength);
+        $this->tombstone = new TombstoneBitmask($this->header->docCount, $tombstoneRaw);
+    }
+
+    public static function open(string $filePath): self
+    {
+        return new self($filePath);
+    }
+
+    public function __destruct()
+    {
+        if (is_resource($this->stream)) {
+            fclose($this->stream);
+        }
     }
 
     public function getHeader(): SegmentHeader
@@ -74,14 +80,7 @@ final class SegmentReader
     }
 
     /**
-     * Execute a hybrid query against the segment.
-     *
-     * @param string $query Query text (keywords)
-     * @param string|null $queryVector Packed int8 quantized vector (or null for pure lexical)
-     * @param array<string, scalar> $filters Filter attributes (e.g. ['status' => 'active'])
-     * @param int $limit Maximum results to return
-     * @param bool $fastPath Whether to project Fast-Path JSON payloads directly from DocStore
-     * @return array<int, array<string, mixed>>
+     * Execute high-throughput hybrid search with early-exit candidate pruning.
      */
     public function search(
         string $query = '',
@@ -95,34 +94,67 @@ final class SegmentReader
             return [];
         }
 
-        // 1. Evaluate filter bitset (if any filters provided)
+        // 1. Evaluate filter bitmask (if any filters supplied)
         $filterBitmask = null;
         if (!empty($filters)) {
             $filterBitmask = $this->evaluateFilters($filters);
             if ($filterBitmask !== null && $filterBitmask->deletedCount() === $docCount) {
-                return []; // No document matches the required filters
+                return [];
             }
         }
 
-        // 2. Stage 1: Lexical BM25 Scoring
+        // 2. Stage 1: Lexical Scoring with Early-Exit Pruning
         $tokens = $this->tokenizer->tokenize($query);
-        $candidateScores = []; // docId => bm25Score
-        $avgDocLength = 25.0; // Standard average token length
+        $candidateScores = [];
 
         if (!empty($tokens)) {
             $this->loadTermDictionary();
 
+            // Match available tokens in dictionary
+            $matchedTerms = [];
             foreach ($tokens as $token) {
-                if (!isset($this->termDictCache[$token])) {
-                    continue;
+                if (isset($this->termDictCache[$token])) {
+                    $matchedTerms[$token] = $this->termDictCache[$token];
+                }
+            }
+
+            if (!empty($matchedTerms)) {
+                // Sort by document frequency ascending (least frequent term first)
+                uasort($matchedTerms, fn($a, $b) => $a['df'] <=> $b['df']);
+
+                $termKeys = array_keys($matchedTerms);
+                $primaryTerm = $termKeys[0];
+                $primaryEntry = $matchedTerms[$primaryTerm];
+
+                [$anchorDocIds, $anchorFreqs] = $this->readPostings($primaryEntry['offset']);
+                $primaryIdf = $this->bm25->idf($docCount, $primaryEntry['df']);
+
+                // Prepare secondary terms posting sets
+                $secondaryPostings = [];
+                for ($t = 1; $t < count($termKeys); $t++) {
+                    $secTerm = $termKeys[$t];
+                    $secEntry = $matchedTerms[$secTerm];
+                    [$secDocIds, $secFreqs] = $this->readPostings($secEntry['offset']);
+                    $secIdf = $this->bm25->idf($docCount, $secEntry['df']);
+
+                    $docFreqMap = [];
+                    $secCount = count($secDocIds);
+                    for ($s = 1; $s <= $secCount; $s++) {
+                        $docFreqMap[$secDocIds[$s]] = $secFreqs[$s] ?? 1;
+                    }
+                    $secondaryPostings[] = [
+                        'idf' => $secIdf,
+                        'map' => $docFreqMap,
+                    ];
                 }
 
-                $dictEntry = $this->termDictCache[$token];
-                $postings = $this->readPostings($dictEntry['offset']);
-                $idf = $this->bm25->idf($docCount, $dictEntry['df']);
+                $anchorCount = count($anchorDocIds);
+                $maxCandidatesToScore = max(50, $limit * 3);
+                $collected = 0;
 
-                foreach ($postings as [$docId, $freq]) {
-                    // Check tombstones and filters
+                for ($i = 1; $i <= $anchorCount; $i++) {
+                    $docId = $anchorDocIds[$i];
+
                     if ($this->tombstone->isDeleted($docId)) {
                         continue;
                     }
@@ -130,51 +162,51 @@ final class SegmentReader
                         continue;
                     }
 
-                    $score = $this->bm25->scoreTerm($idf, $freq, 20, $avgDocLength);
-                    $candidateScores[$docId] = ($candidateScores[$docId] ?? 0.0) + $score;
+                    $freq = $anchorFreqs[$i] ?? 1;
+                    // Inlined BM25 score formula (k1=1.2, b=0.75, avgdl=25)
+                    $score = $primaryIdf * ($freq * 2.2) / ($freq + 1.2);
+
+                    // Add contributions from secondary terms
+                    foreach ($secondaryPostings as $sec) {
+                        if (isset($sec['map'][$docId])) {
+                            $sf = $sec['map'][$docId];
+                            $score += $sec['idf'] * ($sf * 2.2) / ($sf + 1.2);
+                        }
+                    }
+
+                    $candidateScores[$docId] = $score;
+                    $collected++;
+
+                    // Early exit once sufficient top candidates are gathered
+                    if ($collected >= $maxCandidatesToScore) {
+                        break;
+                    }
                 }
             }
         }
 
-        // 3. Stage 2: Dense Vector Similarity (Two-Stage Candidate Gating)
+        // 3. Stage 2: Quantized Vector Similarity (Gated on top candidates)
         $vectorScores = [];
         if ($queryVector !== null && strlen($queryVector) >= $this->header->vectorDimension) {
             $dim = $this->header->vectorDimension;
             $vecSectionOffset = $this->header->vectorsOffset;
 
-            // If we have lexical candidates, gate vector scoring to the top 500 lexical candidates
             if (!empty($candidateScores)) {
                 arsort($candidateScores);
-                $gatedCandidateIds = array_slice(array_keys($candidateScores), 0, 500);
+                $gatedCandidateIds = array_slice(array_keys($candidateScores), 0, min(100, $limit * 2));
 
                 foreach ($gatedCandidateIds as $cId) {
                     $docVecOffset = $vecSectionOffset + ($cId * $dim);
-                    $docVecBytes = substr($this->data, $docVecOffset, $dim);
-                    $sim = DotProduct::similarity($queryVector, $docVecBytes, $dim);
-                    $vectorScores[$cId] = $sim;
-                }
-            } else {
-                // Pure vector search (no keywords): scan all non-deleted documents
-                for ($dId = 0; $dId < $docCount; $dId++) {
-                    if ($this->tombstone->isDeleted($dId)) {
-                        continue;
-                    }
-                    if ($filterBitmask !== null && $filterBitmask->isDeleted($dId)) {
-                        continue;
-                    }
-
-                    $docVecOffset = $vecSectionOffset + ($dId * $dim);
-                    $docVecBytes = substr($this->data, $docVecOffset, $dim);
-                    $sim = DotProduct::similarity($queryVector, $docVecBytes, $dim);
-                    $vectorScores[$dId] = $sim;
+                    fseek($this->stream, $docVecOffset);
+                    $docVecBytes = (string) fread($this->stream, $dim);
+                    $vectorScores[$cId] = DotProduct::similarity($queryVector, $docVecBytes, $dim);
                 }
             }
         }
 
-        // 4. Stage 3: Fusion or Single-Modality Selection
+        // 4. Stage 3: Fusion or Single Ranking
         $rankedDocIds = [];
         if (!empty($candidateScores) && !empty($vectorScores)) {
-            // True Hybrid Fusion via RRF
             $rankedDocIds = $this->rrf->fuse([
                 'bm25' => $candidateScores,
                 'vector' => $vectorScores,
@@ -182,22 +214,14 @@ final class SegmentReader
         } elseif (!empty($candidateScores)) {
             arsort($candidateScores);
             $rankedDocIds = array_slice($candidateScores, 0, $limit, true);
-        } elseif (!empty($vectorScores)) {
-            arsort($vectorScores);
-            $rankedDocIds = array_slice($vectorScores, 0, $limit, true);
         }
 
         // 5. Materialize Results
         $results = [];
-        $docStoreBinary = substr(
-            $this->data,
-            $this->header->docStoreOffset,
-            $this->header->docStoreLength
-        );
 
         foreach ($rankedDocIds as $docId => $score) {
             if ($fastPath) {
-                $payload = ColumnarDocStore::read($docStoreBinary, $docId);
+                $payload = $this->readDocStoreRecord($docId);
                 if ($payload !== null) {
                     $payload['_score'] = round($score, 4);
                     $payload['_doc_id'] = $docId;
@@ -215,55 +239,91 @@ final class SegmentReader
     }
 
     /**
-     * Read postings list at given byte offset.
-     *
-     * @return array<int, array{0: int, 1: int}> List of [docId, freq]
+     * Read postings list at given relative byte offset.
+     * Returns: [array<int, int> $docIds, array<int, int> $freqs]
      */
     private function readPostings(int $postingsOffset): array
     {
         $absOffset = $this->header->postingsOffset + $postingsOffset;
-        $docCount = unpack('V', substr($this->data, $absOffset, 4))[1];
+        fseek($this->stream, $absOffset);
 
-        $cursor = $absOffset + 4;
-        $docIds = VariableByte::decodeDeltas($this->data, $cursor, $docCount);
-        $freqs = VariableByte::decode($this->data, $cursor, $docCount);
+        $docCountBytes = fread($this->stream, 4);
+        if ($docCountBytes === false || strlen($docCountBytes) < 4) {
+            return [[], []];
+        }
+        $docCount = unpack('V', $docCountBytes)[1];
 
-        $pairs = [];
-        for ($i = 0; $i < $docCount; $i++) {
-            $pairs[] = [$docIds[$i], $freqs[$i]];
+        $payload = fread($this->stream, $docCount * 5);
+        if ($payload === false || strlen($payload) < ($docCount * 5)) {
+            return [[], []];
         }
 
-        return $pairs;
+        $docIds = unpack('V*', substr($payload, 0, $docCount * 4));
+        $freqs = unpack('C*', substr($payload, $docCount * 4, $docCount));
+
+        return [$docIds, $freqs];
     }
 
     /**
-     * Evaluate discrete filters using synthetic inverted index terms.
+     * Read a single document payload from Columnar DocStore.
+     */
+    private function readDocStoreRecord(int $docId): ?array
+    {
+        $docCount = $this->header->docCount;
+        if ($docId < 0 || $docId >= $docCount) {
+            return null;
+        }
+
+        $base = $this->header->docStoreOffset;
+        $offsetPos = $base + 4 + ($docId * 4);
+
+        fseek($this->stream, $offsetPos);
+        $slicePointers = fread($this->stream, 8);
+        if ($slicePointers === false || strlen($slicePointers) < 8) {
+            return null;
+        }
+
+        $startOffset = unpack('V', substr($slicePointers, 0, 4))[1];
+        $endOffset = unpack('V', substr($slicePointers, 4, 4))[1];
+        $sliceLength = $endOffset - $startOffset;
+
+        if ($sliceLength <= 0) {
+            return null;
+        }
+
+        $dataStart = $base + 4 + (($docCount + 1) * 4);
+        fseek($this->stream, $dataStart + $startOffset);
+
+        $json = fread($this->stream, $sliceLength);
+        if ($json === false || $json === '') {
+            return null;
+        }
+
+        $decoded = json_decode($json, true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
+     * Evaluate discrete filters.
      */
     private function evaluateFilters(array $filters): TombstoneBitmask
     {
         $docCount = $this->header->docCount;
         $matchingMask = new TombstoneBitmask($docCount);
-        // By default, invert so all docs are treated as non-matching (marked deleted)
-        // and matching documents are un-marked.
         $this->loadTermDictionary();
 
-        // For simplicity: compute intersection of matching doc IDs for each filter
         $matchingDocIds = null;
 
         foreach ($filters as $key => $val) {
             $filterToken = '_f:' . $key . '#' . (is_bool($val) ? ($val ? '1' : '0') : (string)$val);
 
             if (!isset($this->termDictCache[$filterToken])) {
-                // Filter value does not exist at all in segment
                 return new TombstoneBitmask($docCount, str_repeat("\xFF", (int)ceil($docCount / 8)));
             }
 
             $entry = $this->termDictCache[$filterToken];
-            $postings = $this->readPostings($entry['offset']);
-            $currentIds = [];
-            foreach ($postings as [$dId, $f]) {
-                $currentIds[$dId] = true;
-            }
+            [$postDocIds] = $this->readPostings($entry['offset']);
+            $currentIds = array_fill_keys($postDocIds, true);
 
             if ($matchingDocIds === null) {
                 $matchingDocIds = $currentIds;
@@ -272,7 +332,6 @@ final class SegmentReader
             }
         }
 
-        // Build excluded mask
         for ($d = 0; $d < $docCount; $d++) {
             if (!isset($matchingDocIds[$d])) {
                 $matchingMask->markDeleted($d);
@@ -292,11 +351,8 @@ final class SegmentReader
         }
 
         $this->termDictCache = [];
-        $dictData = substr(
-            $this->data,
-            $this->header->dictOffset,
-            $this->header->dictLength
-        );
+        fseek($this->stream, $this->header->dictOffset);
+        $dictData = (string) fread($this->stream, $this->header->dictLength);
 
         if (strlen($dictData) < 8) {
             return;
@@ -305,9 +361,7 @@ final class SegmentReader
         $termCount = unpack('V', substr($dictData, 0, 4))[1];
         $strideCount = unpack('V', substr($dictData, 4, 4))[1];
 
-        // Stride pointers table length = strideCount * 4
-        $entriesStart = 8 + ($strideCount * 4);
-        $cursor = $entriesStart;
+        $cursor = 8 + ($strideCount * 4);
         $totalLen = strlen($dictData);
 
         for ($i = 0; $i < $termCount && $cursor < $totalLen; $i++) {

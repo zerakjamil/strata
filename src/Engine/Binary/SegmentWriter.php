@@ -92,16 +92,16 @@ final class SegmentWriter
             $docIds = [];
             $freqs = [];
             foreach ($postings as [$dId, $f]) {
-                $docIds[] = $dId;
-                $freqs[] = $f;
+                $docIds[] = (int) $dId;
+                $freqs[] = min(255, (int) $f);
             }
 
-            $encodedDocIds = VariableByte::encodeDeltas($docIds);
-            $encodedFreqs = VariableByte::encode($freqs);
+            $encodedDocIds = pack('V*', ...$docIds);
+            $encodedFreqs = pack('C*', ...$freqs);
             $postingChunk = pack('V', count($docIds)) . $encodedDocIds . $encodedFreqs;
 
             $dictEntries[] = [
-                'term' => $term,
+                'term' => (string) $term,
                 'offset' => $currentPostingsOffset,
                 'df' => count($docIds),
             ];
@@ -204,7 +204,7 @@ final class SegmentWriter
             }
 
             $e = $entries[$i];
-            $termBytes = $e['term'];
+            $termBytes = (string) $e['term'];
             $termLen = min(255, strlen($termBytes));
 
             $entriesBinary .= pack('C', $termLen)
