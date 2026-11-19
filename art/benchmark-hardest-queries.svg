@@ -1,26 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="880" height="460" viewBox="0 0 880 460" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="380" viewBox="0 0 880 380" fill="none">
   <defs>
     <style>
-      .serif { font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", ui-serif, Georgia, Cambria, "Times New Roman", serif; }
-      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .serif { font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", ui-serif, Georgia, serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
       .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-      .kanji-title { font-size: 11px; font-weight: 700; letter-spacing: 0.25em; fill: #94a3b8; text-transform: uppercase; }
-      .ink-title { font-size: 17px; font-weight: 800; letter-spacing: 0.05em; fill: #ffffff; }
-      .ink-sub { font-size: 12px; font-weight: 500; fill: #7e8b9f; }
-      .q-title { font-size: 13px; font-weight: 700; fill: #f8fafc; }
-      .q-sub { font-size: 11px; font-weight: 500; fill: #627288; }
+      .title { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; fill: #ffffff; }
+      .q-label { font-size: 13.5px; font-weight: 700; fill: #f8fafc; }
       .val-strata { font-size: 13px; font-weight: 800; fill: #ffffff; }
       .val-pg { font-size: 13px; font-weight: 700; fill: #f87171; }
-      .seal-text { font-family: "Hiragino Mincho ProN", "Yu Mincho", serif; font-size: 16px; font-weight: 900; fill: #ffffff; }
-      .seal-sub { font-family: "Hiragino Mincho ProN", serif; font-size: 7.5px; font-weight: 700; fill: #fee2e2; letter-spacing: 0.1em; }
+      .hanko { font-family: "Hiragino Mincho ProN", "Yu Mincho", serif; font-size: 16px; font-weight: 900; fill: #ffffff; }
+      .hanko-sub { font-family: "Hiragino Mincho ProN", serif; font-size: 7.5px; font-weight: 700; fill: #fee2e2; }
     </style>
 
-    <!-- Traditional Fine Ink Crosshatch Pattern for PostgreSQL -->
     <pattern id="ink-hatch-red" width="8" height="8" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
       <line x1="0" y1="0" x2="0" y2="8" stroke="#ef4444" stroke-width="1.8" stroke-opacity="0.8"/>
     </pattern>
 
-    <!-- Luminous Sumi Ink Blade -->
     <linearGradient id="blade-grad" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#ffffff"/>
       <stop offset="85%" stop-color="#e2e8f0"/>
@@ -32,137 +27,113 @@
     </filter>
   </defs>
 
-  <!-- Canvas: Deep Sumi Ink Surface -->
-  <rect x="0" y="0" width="880" height="460" rx="4" fill="#090c13"/>
+  <!-- Canvas -->
+  <rect x="0" y="0" width="880" height="380" rx="4" fill="#090c13"/>
+  <rect x="12" y="12" width="856" height="356" rx="2" stroke="#252f44" stroke-width="1.5"/>
+  <rect x="16" y="16" width="848" height="348" rx="1" stroke="#161f30" stroke-width="1"/>
 
-  <!-- Outer Woodblock Border & Inset Fine Line -->
-  <rect x="12" y="12" width="856" height="436" rx="2" stroke="#252f44" stroke-width="1.5"/>
-  <rect x="16" y="16" width="848" height="428" rx="1" stroke="#161f30" stroke-width="1"/>
-
-  <!-- Traditional Ink Corner Accents -->
+  <!-- Corner Accents -->
   <path d="M 12 28 L 28 12 M 12 36 L 36 12" stroke="#3b4861" stroke-width="1"/>
   <path d="M 868 28 L 852 12 M 868 36 L 844 12" stroke="#3b4861" stroke-width="1"/>
-  <path d="M 12 432 L 28 448 M 12 424 L 36 448" stroke="#3b4861" stroke-width="1"/>
-  <path d="M 868 432 L 852 448 M 868 424 L 844 448" stroke="#3b4861" stroke-width="1"/>
+  <path d="M 12 352 L 28 368 M 12 344 L 36 368" stroke="#3b4861" stroke-width="1"/>
+  <path d="M 868 352 L 852 368 M 868 344 L 844 368" stroke="#3b4861" stroke-width="1"/>
 
-  <!-- Red Vermilion Hanko Seal Stamp (極速 = Ultimate Speed) -->
+  <!-- Hanko Seal (極 = Ultimate) -->
   <g transform="translate(806, 26)">
     <rect x="0" y="0" width="46" height="46" rx="5" fill="#dc2626"/>
     <rect x="2" y="2" width="42" height="42" rx="4" stroke="#ffffff" stroke-width="1.2" stroke-opacity="0.85" fill="none"/>
-    <text x="23" y="24" text-anchor="middle" class="seal-text">極</text>
-    <text x="23" y="38" text-anchor="middle" class="seal-sub">速攻</text>
+    <text x="23" y="24" text-anchor="middle" class="hanko">極</text>
+    <text x="23" y="38" text-anchor="middle" class="hanko-sub">速攻</text>
   </g>
 
-  <!-- Header Text -->
-  <text x="36" y="44" class="serif kanji-title">極限検索検証 · EXTREME STRESS-TEST IR BENCHMARK</text>
-  <text x="36" y="68" class="serif ink-title">The 4 Hardest Query Challenges (2,000,000 Records)</text>
-  <text x="36" y="86" class="sans ink-sub">Head-to-Head: PostgreSQL True Relevance Sort (ts_rank) vs Strata BM25 (Block-Max WAND)</text>
+  <!-- Title & Legend -->
+  <text x="36" y="52" class="serif title">Ranked Search Latency</text>
 
-  <!-- Legend -->
-  <g transform="translate(560, 48)">
+  <g transform="translate(560, 40)">
     <rect x="0" y="2" width="12" height="12" rx="2" fill="#ffffff"/>
-    <text x="18" y="12" class="serif" font-size="12" font-weight="700" fill="#f8fafc">Strata (WAND)</text>
-    <rect x="120" y="2" width="12" height="12" rx="2" fill="#991b1b"/>
-    <rect x="120" y="2" width="12" height="12" rx="2" fill="url(#ink-hatch-red)"/>
-    <rect x="120" y="2" width="12" height="12" rx="2" stroke="#ef4444" stroke-width="1" fill="none"/>
-    <text x="138" y="12" class="serif" font-size="12" font-weight="700" fill="#94a3b8">PostgreSQL (ts_rank)</text>
+    <text x="18" y="12" class="serif" font-size="12" font-weight="700" fill="#f8fafc">Strata</text>
+    <rect x="90" y="2" width="12" height="12" rx="2" fill="#991b1b"/>
+    <rect x="90" y="2" width="12" height="12" rx="2" fill="url(#ink-hatch-red)"/>
+    <rect x="90" y="2" width="12" height="12" rx="2" stroke="#ef4444" stroke-width="1" fill="none"/>
+    <text x="108" y="12" class="serif" font-size="12" font-weight="700" fill="#94a3b8">PostgreSQL</text>
   </g>
 
-  <!-- ==================== CHALLENGE 1 ==================== -->
-  <g transform="translate(36, 108)">
-    <text x="0" y="12" class="serif q-title">1. Combinatorial Stopword Explosion</text>
-    <text x="270" y="12" class="mono q-sub">"mechanical keyboard edition" · 100,000+ candidate intersection</text>
+  <!-- ROW 1 -->
+  <g transform="translate(36, 82)">
+    <text x="0" y="14" class="mono q-label">"mechanical keyboard edition"</text>
 
-    <!-- Postgres Bar: 2025ms -->
-    <rect x="0" y="22" width="460" height="16" rx="2" fill="#991b1b"/>
-    <rect x="0" y="22" width="460" height="16" rx="2" fill="url(#ink-hatch-red)"/>
-    <rect x="0" y="22" width="460" height="16" rx="2" stroke="#ef4444" stroke-width="1" fill="none"/>
-    <text x="470" y="35" class="mono val-pg">2,025.0 ms</text>
+    <!-- Postgres -->
+    <rect x="0" y="24" width="460" height="14" rx="2" fill="#991b1b"/>
+    <rect x="0" y="24" width="460" height="14" rx="2" fill="url(#ink-hatch-red)"/>
+    <rect x="0" y="24" width="460" height="14" rx="2" stroke="#ef4444" stroke-width="1" fill="none"/>
+    <text x="470" y="36" class="mono val-pg">2,025 ms</text>
 
-    <!-- Strata Bar: 74.8ms -->
-    <path d="M 0 42 L 22 42 L 26 50 L 22 58 L 0 58 Z" fill="url(#blade-grad)" filter="url(#blade-glow)"/>
-    <text x="36" y="55" class="mono val-strata">74.8 ms</text>
+    <!-- Strata -->
+    <path d="M 0 44 L 22 44 L 26 51 L 22 58 L 0 58 Z" fill="url(#blade-grad)" filter="url(#blade-glow)"/>
+    <text x="36" y="55" class="mono val-strata">75 ms</text>
 
-    <!-- Red Seal Badge -->
-    <g transform="translate(710, 24)">
-      <rect x="0" y="0" width="112" height="26" rx="3" fill="#dc2626"/>
-      <rect x="2" y="2" width="108" height="22" rx="2" stroke="#ffffff" stroke-width="0.8" fill="none"/>
-      <text x="56" y="17" text-anchor="middle" class="sans" font-size="11" font-weight="900" fill="#ffffff" letter-spacing="0.04em">27.1x FASTER</text>
+    <!-- Badge -->
+    <g transform="translate(730, 26)">
+      <rect x="0" y="0" width="86" height="24" rx="2" fill="#dc2626"/>
+      <rect x="2" y="2" width="82" height="20" rx="1" stroke="#ffffff" stroke-width="0.8" fill="none"/>
+      <text x="43" y="16" text-anchor="middle" class="sans" font-size="11" font-weight="900" fill="#ffffff">27.1×</text>
     </g>
   </g>
 
-  <line x1="36" y1="184" x2="844" y2="184" stroke="#182234" stroke-dasharray="2 4"/>
+  <!-- ROW 2 -->
+  <g transform="translate(36, 154)">
+    <text x="0" y="14" class="mono q-label">"wireless mouse repudiandae"</text>
 
-  <!-- ==================== CHALLENGE 2 ==================== -->
-  <g transform="translate(36, 194)">
-    <text x="0" y="12" class="serif q-title">2. Rare Needle in 2 Million Rows</text>
-    <text x="270" y="12" class="mono q-sub">"wireless mouse repudiandae" · High-frequency distractors</text>
+    <rect x="0" y="24" width="280" height="14" rx="2" fill="#991b1b"/>
+    <rect x="0" y="24" width="280" height="14" rx="2" fill="url(#ink-hatch-red)"/>
+    <rect x="0" y="24" width="280" height="14" rx="2" stroke="#ef4444" stroke-width="1" fill="none"/>
+    <text x="290" y="36" class="mono val-pg">131 ms</text>
 
-    <!-- Postgres Bar: 131.0ms -->
-    <rect x="0" y="22" width="280" height="16" rx="2" fill="#991b1b"/>
-    <rect x="0" y="22" width="280" height="16" rx="2" fill="url(#ink-hatch-red)"/>
-    <rect x="0" y="22" width="280" height="16" rx="2" stroke="#ef4444" stroke-width="1" fill="none"/>
-    <text x="290" y="35" class="mono val-pg">131.0 ms</text>
+    <path d="M 0 44 L 14 44 L 18 51 L 14 58 L 0 58 Z" fill="url(#blade-grad)" filter="url(#blade-glow)"/>
+    <text x="28" y="55" class="mono val-strata">2.8 ms</text>
 
-    <!-- Strata Bar: 2.84ms -->
-    <path d="M 0 42 L 14 42 L 18 50 L 14 58 L 0 58 Z" fill="url(#blade-grad)" filter="url(#blade-glow)"/>
-    <text x="28" y="55" class="mono val-strata">2.84 ms</text>
-
-    <!-- Red Seal Badge -->
-    <g transform="translate(710, 24)">
-      <rect x="0" y="0" width="112" height="26" rx="3" fill="#dc2626"/>
-      <rect x="2" y="2" width="108" height="22" rx="2" stroke="#ffffff" stroke-width="0.8" fill="none"/>
-      <text x="56" y="17" text-anchor="middle" class="sans" font-size="11" font-weight="900" fill="#ffffff" letter-spacing="0.04em">46.1x FASTER</text>
+    <g transform="translate(730, 26)">
+      <rect x="0" y="0" width="86" height="24" rx="2" fill="#dc2626"/>
+      <rect x="2" y="2" width="82" height="20" rx="1" stroke="#ffffff" stroke-width="0.8" fill="none"/>
+      <text x="43" y="16" text-anchor="middle" class="sans" font-size="11" font-weight="900" fill="#ffffff">46.1×</text>
     </g>
   </g>
 
-  <line x1="36" y1="270" x2="844" y2="270" stroke="#182234" stroke-dasharray="2 4"/>
+  <!-- ROW 3 -->
+  <g transform="translate(36, 226)">
+    <text x="0" y="14" class="mono q-label">"ergonomic chair" (status = active, price &gt; 500)</text>
 
-  <!-- ==================== CHALLENGE 3 ==================== -->
-  <g transform="translate(36, 280)">
-    <text x="0" y="12" class="serif q-title">3. Hybrid Query + Attribute Filtering</text>
-    <text x="270" y="12" class="mono q-sub">"ergonomic chair" + status='active' AND price > 500</text>
+    <rect x="0" y="24" width="410" height="14" rx="2" fill="#991b1b"/>
+    <rect x="0" y="24" width="410" height="14" rx="2" fill="url(#ink-hatch-red)"/>
+    <rect x="0" y="24" width="410" height="14" rx="2" stroke="#ef4444" stroke-width="1" fill="none"/>
+    <text x="420" y="36" class="mono val-pg">1,540 ms</text>
 
-    <!-- Postgres Bar: 1539.5ms -->
-    <rect x="0" y="22" width="410" height="16" rx="2" fill="#991b1b"/>
-    <rect x="0" y="22" width="410" height="16" rx="2" fill="url(#ink-hatch-red)"/>
-    <rect x="0" y="22" width="410" height="16" rx="2" stroke="#ef4444" stroke-width="1" fill="none"/>
-    <text x="420" y="35" class="mono val-pg">1,539.5 ms</text>
+    <path d="M 0 44 L 16 44 L 20 51 L 16 58 L 0 58 Z" fill="url(#blade-grad)" filter="url(#blade-glow)"/>
+    <text x="30" y="55" class="mono val-strata">25 ms</text>
 
-    <!-- Strata Bar: 25.4ms -->
-    <path d="M 0 42 L 16 42 L 20 50 L 16 58 L 0 58 Z" fill="url(#blade-grad)" filter="url(#blade-glow)"/>
-    <text x="30" y="55" class="mono val-strata">25.4 ms</text>
-
-    <!-- Red Seal Badge -->
-    <g transform="translate(710, 24)">
-      <rect x="0" y="0" width="112" height="26" rx="3" fill="#dc2626"/>
-      <rect x="2" y="2" width="108" height="22" rx="2" stroke="#ffffff" stroke-width="0.8" fill="none"/>
-      <text x="56" y="17" text-anchor="middle" class="sans" font-size="11" font-weight="900" fill="#ffffff" letter-spacing="0.04em">60.6x FASTER</text>
+    <g transform="translate(730, 26)">
+      <rect x="0" y="0" width="86" height="24" rx="2" fill="#dc2626"/>
+      <rect x="2" y="2" width="82" height="20" rx="1" stroke="#ffffff" stroke-width="0.8" fill="none"/>
+      <text x="43" y="16" text-anchor="middle" class="sans" font-size="11" font-weight="900" fill="#ffffff">60.6×</text>
     </g>
   </g>
 
-  <line x1="36" y1="356" x2="844" y2="356" stroke="#182234" stroke-dasharray="2 4"/>
+  <!-- ROW 4 -->
+  <g transform="translate(36, 298)">
+    <text x="0" y="14" class="mono q-label">"wireless keyboard" (limit = 50, offset = 100)</text>
 
-  <!-- ==================== CHALLENGE 4 ==================== -->
-  <g transform="translate(36, 366)">
-    <text x="0" y="12" class="serif q-title">4. Deep Top-K Pagination (Offset 100)</text>
-    <text x="270" y="12" class="mono q-sub">"wireless keyboard" · limit=50, offset=100 (WAND threshold elevation)</text>
+    <rect x="0" y="24" width="360" height="14" rx="2" fill="#991b1b"/>
+    <rect x="0" y="24" width="360" height="14" rx="2" fill="url(#ink-hatch-red)"/>
+    <rect x="0" y="24" width="360" height="14" rx="2" stroke="#ef4444" stroke-width="1" fill="none"/>
+    <text x="370" y="36" class="mono val-pg">1,210 ms</text>
 
-    <!-- Postgres Bar: 1210.3ms -->
-    <rect x="0" y="22" width="360" height="16" rx="2" fill="#991b1b"/>
-    <rect x="0" y="22" width="360" height="16" rx="2" fill="url(#ink-hatch-red)"/>
-    <rect x="0" y="22" width="360" height="16" rx="2" stroke="#ef4444" stroke-width="1" fill="none"/>
-    <text x="370" y="35" class="mono val-pg">1,210.3 ms</text>
+    <path d="M 0 44 L 15 44 L 19 51 L 15 58 L 0 58 Z" fill="url(#blade-grad)" filter="url(#blade-glow)"/>
+    <text x="29" y="55" class="mono val-strata">22 ms</text>
 
-    <!-- Strata Bar: 21.7ms -->
-    <path d="M 0 42 L 15 42 L 19 50 L 15 58 L 0 58 Z" fill="url(#blade-grad)" filter="url(#blade-glow)"/>
-    <text x="29" y="55" class="mono val-strata">21.7 ms</text>
-
-    <!-- Red Seal Badge -->
-    <g transform="translate(710, 24)">
-      <rect x="0" y="0" width="112" height="26" rx="3" fill="#dc2626"/>
-      <rect x="2" y="2" width="108" height="22" rx="2" stroke="#ffffff" stroke-width="0.8" fill="none"/>
-      <text x="56" y="17" text-anchor="middle" class="sans" font-size="11" font-weight="900" fill="#ffffff" letter-spacing="0.04em">55.9x FASTER</text>
+    <g transform="translate(730, 26)">
+      <rect x="0" y="0" width="86" height="24" rx="2" fill="#dc2626"/>
+      <rect x="2" y="2" width="82" height="20" rx="1" stroke="#ffffff" stroke-width="0.8" fill="none"/>
+      <text x="43" y="16" text-anchor="middle" class="sans" font-size="11" font-weight="900" fill="#ffffff">55.9×</text>
     </g>
   </g>
 </svg>
