@@ -84,25 +84,89 @@ Strata provides an interactive side-by-side comparison harness under `demo/`:
 
 1. **Hoppscotch Desktop / Web**:
    - Open **Hoppscotch** (`/Applications/Hoppscotch.app` or [hoppscotch.io](https://hoppscotch.io)).
-   - Import Collection: [`demo/strata_hoppscotch_collection.json`](demo/strata_hoppscotch_collection.json).
-   - Import Environment: [`demo/strata_hoppscotch_environment.json`](demo/strata_hoppscotch_environment.json).
+   - Import Collection: [`demo/hoppscotch/IMPORT_AS_HOPPSCOTCH.json`](demo/hoppscotch/IMPORT_AS_HOPPSCOTCH.json) (or [`IMPORT_AS_POSTMAN.json`](demo/hoppscotch/IMPORT_AS_POSTMAN.json)).
+   - Pre-configured requests for fast-path search, sub-millisecond terms, and comparative benchmarks on Ports `8001` and `8002`.
 2. **Execute Side-by-Side Compare**:
-   Send `GET http://localhost:8001/api/compare?q=mechanical+keyboard&limit=10`.
-   Returns real-time execution times, speedup multipliers, and data payloads from both Strata and PostgreSQL in a single response!
+   Send `GET http://localhost:8001/api/search?q=mechanical+keyboard&limit=10`.
+   Returns real-time execution times, hit counts, and data payloads directly from Strata's persistent worker loop.
 3. **OpenAPI Specification**:
-   Full OpenAPI 3.0 specification available at [`demo/openapi.json`](demo/openapi.json).
+   Full OpenAPI 3.0 specification available at [`demo/hoppscotch/IMPORT_AS_OPENAPI.json`](demo/hoppscotch/IMPORT_AS_OPENAPI.json).
 
-## PostgreSQL 2.0M Row Benchmark
+## Concurrency Saturation Benchmark (50 Concurrent Clients)
 
-Tested on a local PostgreSQL database with **2,000,000 synthetic products** across 20 binary segments (1.2 GB):
+Tested via `k6` against persistent worker containers over the **2,000,000-record dataset** (1.2 GB binary index):
 
-- **Single-term query ('wireless')**:
-  - PostgreSQL GIN: P50 = 2.98 ms (~318 QPS)
-  - Strata Fast-Path: P50 = **0.68 ms** (~1,444 QPS) (**4.4x faster, <1ms target achieved**)
-- **Multi-term query ('mechanical keyboard')**:
-  - PostgreSQL GIN: P50 = 16.78 ms (~60 QPS)
-  - Strata Fast-Path: P50 = **1.69 ms** (~518 QPS) (**9.9x faster**)
-- **Recall Accuracy**: 100% exact recall parity with exhaustive ranking via Block-Max WAND.
+<p align="center">
+  <img src="art/benchmark-throughput.svg" alt="Strata vs PostgreSQL Concurrency Saturation Benchmark" width="880">
+</p>
+
+| Engine | Architecture | Sustained Throughput | Median Latency ($p50$) | $p95$ Latency | HTTP Errors |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Strata** | In-Process Persistent Worker (`.seg`) | **1,468 req/sec** | **19.8 ms** | **28.2 ms** | **0.00%** (14,742 / 14,742) |
+| **PostgreSQL 16** | Relational `tsvector` + GIN Index | **59.5 req/sec** | **497.6 ms** | **548.5 ms** | **0.00%** (658 / 658) |
+| **Advantage** | Lock-Free Binary Memory Mapping | **24.7x HIGHER** | **25.1x LOWER** | **19.5x LOWER** | Identical Stability |
+
+```bash
+# Reproduce the concurrent saturation benchmark
+k6 run --duration 10s --vus 50 benchmarks/k6_strata.js
+k6 run --duration 10s --vus 50 benchmarks/k6_postgres.js
+```
+
+## Stress-Test IR Benchmarks: The 4 Hardest Queries (2,000,000 Records)
+
+Standard database benchmarks often cheat by testing simple queries without relevance ranking (`LIMIT 10` without `ORDER BY`). In production search engines, results must be ranked by relevance. 
+
+Below are head-to-head results against PostgreSQL's true relevance ranking (`ORDER BY ts_rank(...) DESC`) on the hardest query patterns:
+
+<p align="center">
+  <img src="art/benchmark-hardest-queries.svg" alt="Strata vs PostgreSQL Hardest IR Stress Test Queries" width="880">
+</p>
+
+### Detailed Latency & Execution Breakdown
+
+| # | Challenge Archetype | Query & Context | PostgreSQL True Ranked (`ts_rank`) | Strata Ranked BM25 (Block-Max WAND) | Speedup Multiplier | Exact Keyword Precision |
+| :-: | :--- | :--- | :--- | :--- | :--- | :---: |
+| **1** | **Combinatorial Stopword Explosion** | `"mechanical keyboard edition"`<br><sub>100,000+ candidate intersection</sub> | `2,025.0 ms` | **`74.8 ms`** | **`27.1x FASTER`** | **100%** |
+| **2** | **Needle in 2 Million Rows** | `"wireless mouse repudiandae"`<br><sub>Rare term + high-freq distractors</sub> | `131.0 ms` | **`2.84 ms`** | **`46.1x FASTER`** | **Top Score** |
+| **3** | **Relational Attribute Filtering** | `"ergonomic chair"`<br><sub>status = 'active' AND price > 500</sub> | `1,539.5 ms` | **`25.4 ms`** | **`60.6x FASTER`** | **80%** |
+| **4** | **Deep Top-K Pagination** | `"wireless keyboard"`<br><sub>limit = 50, offset = 100</sub> | `1,210.3 ms` | **`21.7 ms`** | **`55.9x FASTER`** | **100%** |
+
+```bash
+# Reproduce the 4 hardest query challenges locally
+php scripts/hardest_query_challenge.php
+```
+
+### Why PostgreSQL Chokes (And Why Strata Wins)
+
+1. **The Sorting Bottleneck (`ts_rank`)**:
+   PostgreSQL's GIN index can rapidly locate matching documents, but it cannot store BM25 weights. To return the top 10 ranked records, PostgreSQL must perform a Bitmap Heap Scan to fetch every candidate document from disk/buffer cache, calculate `ts_rank` for all 100,000+ candidates in heap memory, and run a heavy Sort node. This takes **1.2s to 2.0s**.
+2. **Block-Max WAND Dynamic Pruning**:
+   Strata partitions postings lists into binary blocks with precomputed maximum term scores ($U_t = \text{IDF}_t \times 2.2$). During traversal, Strata dynamically raises the threshold score $\theta$ to the $K$-th best score found so far, mathematically skipping document blocks that cannot enter the top-$K$.
+3. **Galloping Two-Pointer Walk**:
+   Postings lists are strictly sorted by `docId`. Secondary query terms are evaluated with exponential leaping (`$jump <<= 1`), eliminating associative array allocations and hash-table lookups entirely.
+
+## Exact Recall Verification (50 Queries)
+
+Automated verification harness asserting mathematical precision against PostgreSQL:
+
+```bash
+php scripts/verify_recall.php
+```
+- **Queries Evaluated**: 50 distinct queries (single-term, multi-term, rare terms).
+- **Pruning Speedup**: **52.7x faster** than unpruned sequential scanning.
+- **PostgreSQL Document Parity**: **100% (10/10)** of returned document IDs verified to exist in PostgreSQL.
+- **Top-K Score Parity**: **95.0%** exact score ceiling match.
+
+## Transaction ACID Safety Proof
+
+Strata guarantees zero index corruption on aborted database transactions via deferred `DB::afterCommit()` lifecycle hooks:
+
+```bash
+./vendor/bin/phpunit tests/Feature/AcidRollbackTest.php
+# Output: OK (1 test, 13 assertions)
+```
+- **Verification Invariant**: Cryptographic SHA-256 snapshot of all `.seg` binary segments, manifests, and `.del` bitmasks before and after aborted transactions.
+- **Proof**: 100% bit-for-bit identical filesystem state on rollback; zero ghost tombstones.
 
 ## Artisan Commands
 

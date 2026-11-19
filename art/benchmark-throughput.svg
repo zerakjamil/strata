@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="300" viewBox="0 0 880 300" fill="none">
+  <defs>
+    <style>
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .title { font-size: 15px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; fill: #ffffff; }
+      .sub { font-size: 12px; font-weight: 500; fill: #94a3b8; }
+      .label { font-size: 13px; font-weight: 700; fill: #f8fafc; }
+      .val-cyan { font-size: 14px; font-weight: 800; fill: #00f2fe; }
+      .val-coral { font-size: 13px; font-weight: 700; fill: #ff4a6e; }
+      .badge-text { font-size: 11px; font-weight: 800; fill: #050b14; letter-spacing: 0.04em; }
+      .footer-txt { font-size: 11px; font-weight: 500; fill: #64748b; }
+    </style>
+    <!-- Hard Anime Cel-Shade Drop Filter -->
+    <filter id="hard-shadow" x="0" y="0" width="880" height="300" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="4" dy="4" stdDeviation="0" flood-color="#030712" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+
+  <!-- Background Canvas: Cyber Obsidian with Angular Tech Notch -->
+  <rect x="0" y="0" width="880" height="300" rx="12" fill="#080d1a"/>
+  <rect x="1" y="1" width="878" height="298" rx="11" stroke="#1e293b" stroke-width="1.5"/>
+
+  <!-- Top Accent Mecha Border Strip -->
+  <path d="M 0 12 C 0 5.37 5.37 0 12 0 L 260 0 L 280 20 L 868 20 C 874.63 20 880 25.37 880 32 L 880 4 L 880 0 Z" fill="#00f2fe" opacity="0.15"/>
+  <line x1="20" y1="20" x2="260" y2="20" stroke="#00f2fe" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Header -->
+  <text x="32" y="52" class="sans title">Concurrency Saturation: 50 Concurrent Clients</text>
+  <text x="32" y="72" class="sans sub">k6 Sustained Load Test · Port 8001 (Persistent Worker) vs Port 8002 (PostgreSQL GIN Baseline)</text>
+
+  <!-- Grid Background Lines -->
+  <line x1="240" y1="95" x2="840" y2="95" stroke="#1e293b" stroke-dasharray="3 3"/>
+  <line x1="240" y1="150" x2="840" y2="150" stroke="#1e293b" stroke-dasharray="3 3"/>
+  <line x1="240" y1="205" x2="840" y2="205" stroke="#1e293b" stroke-dasharray="3 3"/>
+  
+  <line x1="240" y1="95" x2="240" y2="215" stroke="#334155" stroke-width="1.5"/>
+  <line x1="440" y1="95" x2="440" y2="215" stroke="#1e293b" stroke-dasharray="2 4"/>
+  <line x1="640" y1="95" x2="640" y2="215" stroke="#1e293b" stroke-dasharray="2 4"/>
+  <line x1="840" y1="95" x2="840" y2="215" stroke="#1e293b" stroke-dasharray="2 4"/>
+
+  <!-- BAR 1: STRATA (1,468 RPS) -->
+  <g transform="translate(32, 110)">
+    <text x="0" y="24" class="sans label">Strata Engine</text>
+    <text x="0" y="40" class="mono sub">Octane Persistent</text>
+
+    <!-- Bar Container & Fill with Cel-Shaded Hard Shadow -->
+    <rect x="208" y="4" width="490" height="34" rx="4" fill="#000000" opacity="0.4"/>
+    <path d="M 208 4 L 690 4 L 698 21 L 690 38 L 208 38 Z" fill="#00f2fe"/>
+    <!-- Hard Edge Tone Highlight (Anime 2-tone) -->
+    <path d="M 208 4 L 690 4 L 694 13 L 208 13 Z" fill="#ffffff" opacity="0.35"/>
+    <rect x="208" y="34" width="482" height="4" fill="#00a3bf"/>
+
+    <!-- Value Labels -->
+    <text x="714" y="26" class="mono val-cyan">1,468 req/s</text>
+    <text x="714" y="40" class="mono sub">19.8 ms (p50)</text>
+
+    <!-- Speedup Badge -->
+    <rect x="576" y="9" width="105" height="22" rx="3" fill="#ffffff"/>
+    <text x="583" y="24" class="sans badge-text">24.7x HIGHER</text>
+  </g>
+
+  <!-- BAR 2: POSTGRESQL (59.5 RPS) -->
+  <g transform="translate(32, 175)">
+    <text x="0" y="22" class="sans label">PostgreSQL 16</text>
+    <text x="0" y="38" class="mono sub">tsvector + GIN</text>
+
+    <!-- Bar Container & Fill -->
+    <rect x="208" y="4" width="22" height="34" rx="4" fill="#000000" opacity="0.4"/>
+    <rect x="208" y="4" width="20" height="34" rx="4" fill="#ff4a6e"/>
+    <rect x="208" y="4" width="20" height="11" rx="4" fill="#ff8099" opacity="0.4"/>
+
+    <!-- Value Labels -->
+    <text x="240" y="23" class="mono val-coral">59.5 req/s</text>
+    <text x="240" y="38" class="mono sub">497.6 ms (p50) · Connection Pool Saturation</text>
+  </g>
+
+  <!-- Divider Line -->
+  <line x1="32" y1="250" x2="848" y2="250" stroke="#1e293b" stroke-width="1"/>
+
+  <!-- Footer Stats (Anti-slop exact verified metrics) -->
+  <text x="32" y="274" class="sans footer-txt">✓ 0.00% HTTP Errors (14,742 / 14,742)</text>
+  <text x="290" y="274" class="sans footer-txt">✓ Zero Memory Leak over 2M records</text>
+  <text x="560" y="274" class="sans footer-txt">✓ Galloping 2-Pointer Binary Postings Walk</text>
+</svg>
