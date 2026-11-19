@@ -1,0 +1,258 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Strata vs PostgreSQL Real-Time Search Benchmark API",
+    "description": "High-throughput side-by-side benchmark comparison between Strata In-Process Block-Max WAND Search and native PostgreSQL GIN Full-Text Search across 2,000,000 records.",
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8001",
+      "description": "Strata Accelerated Service (Port 8001)"
+    },
+    {
+      "url": "http://localhost:8002",
+      "description": "PostgreSQL Baseline Service (Port 8002)"
+    }
+  ],
+  "paths": {
+    "/api/compare": {
+      "get": {
+        "summary": "Real-time side-by-side comparison between Strata and PostgreSQL",
+        "description": "Executes the identical query on both Strata and PostgreSQL in parallel, measuring exact microsecond execution times, speedup ratio, and result relevance side-by-side.",
+        "operationId": "compareEngines",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search keyword or phrase",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "mechanical keyboard"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of records to return",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "example": 10
+            }
+          },
+          {
+            "name": "index",
+            "in": "query",
+            "description": "Strata target index",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "products"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comparative benchmark metrics and result breakdown",
+            "headers": {
+              "X-Strata-Execution-Ms": {
+                "schema": { "type": "string", "example": "0.685" }
+              },
+              "X-Postgres-Execution-Ms": {
+                "schema": { "type": "string", "example": "16.785" }
+              },
+              "X-Speedup-Factor": {
+                "schema": { "type": "string", "example": "24.5x" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "query": { "type": "string", "example": "mechanical keyboard" },
+                    "limit": { "type": "integer", "example": 10 },
+                    "comparison": {
+                      "type": "object",
+                      "properties": {
+                        "strata_latency_ms": { "type": "number", "example": 0.685 },
+                        "postgres_latency_ms": { "type": "number", "example": 16.785 },
+                        "speedup": { "type": "string", "example": "24.5x faster" },
+                        "strata_hits": { "type": "integer", "example": 10 },
+                        "postgres_hits": { "type": "integer", "example": 10 },
+                        "strata_memory_bytes": { "type": "integer", "example": 4096 },
+                        "postgres_memory_bytes": { "type": "integer", "example": 6496 },
+                        "pruning_algorithm": { "type": "string", "example": "Block-Max WAND (Exact Provable Bounds)" }
+                      }
+                    },
+                    "strata_data": {
+                      "type": "array",
+                      "items": { "type": "object" }
+                    },
+                    "postgres_data": {
+                      "type": "array",
+                      "items": { "type": "object" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "summary": "Execute search query across 2M records",
+        "description": "Returns matching product records sorted by relevance score. Compare latency headers between Strata (port 8001) and PostgreSQL (port 8002).",
+        "operationId": "searchProducts",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search keyword or phrase",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "mechanical keyboard"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of records to return",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "example": 10
+            }
+          },
+          {
+            "name": "index",
+            "in": "query",
+            "description": "Search index name",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "products"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by product status",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["active", "inactive"],
+              "example": "active"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful search query response",
+            "headers": {
+              "X-Search-Engine": {
+                "schema": {
+                  "type": "string",
+                  "example": "Strata-In-Process-FastPath"
+                }
+              },
+              "X-Execution-Time-Ms": {
+                "schema": {
+                  "type": "string",
+                  "example": "0.685ms"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "integer", "example": 14205 },
+                          "title": { "type": "string", "example": "Mechanical Keyboard Pro Edition" },
+                          "slug": { "type": "string", "example": "mechanical-keyboard-pro-14205" },
+                          "price": { "type": "number", "format": "float", "example": 129.99 },
+                          "status": { "type": "string", "example": "active" },
+                          "_score": { "type": "number", "format": "float", "example": 4.52 }
+                        }
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "count": { "type": "integer", "example": 10 },
+                        "query": { "type": "string", "example": "mechanical keyboard" },
+                        "index": { "type": "string", "example": "products" },
+                        "engine": { "type": "string", "example": "Strata (In-Process Block-Max WAND)" },
+                        "latency_ms": { "type": "number", "example": 0.685 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/delete": {
+      "post": {
+        "summary": "Tombstone a document by ID (Scout delete())",
+        "description": "Applies an atomic O(1) bitmask tombstone deletion, immediately excluding the document from future searches.",
+        "operationId": "deleteDocument",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Canonical document ID to tombstone",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "1600037"
+            }
+          },
+          {
+            "name": "index",
+            "in": "query",
+            "description": "Index name",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "products"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document tombstoned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "success" },
+                    "message": { "type": "string", "example": "Document ID 1600037 tombstoned via atomic bitmask" },
+                    "deleted_records": { "type": "integer", "example": 1 },
+                    "index": { "type": "string", "example": "products" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

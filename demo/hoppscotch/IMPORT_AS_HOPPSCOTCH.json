@@ -1,0 +1,374 @@
+[
+  {
+    "v": 2,
+    "name": "Project 1: Strata Search Engine (Port 8001)",
+    "folders": [],
+    "requests": [
+      {
+        "v": 1,
+        "name": "1. Fast-Path Search (mechanical keyboard)",
+        "method": "GET",
+        "endpoint": "http://localhost:8001/api/search",
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "active": true
+          }
+        ],
+        "params": [
+          {
+            "key": "q",
+            "value": "mechanical keyboard",
+            "active": true
+          },
+          {
+            "key": "limit",
+            "value": "10",
+            "active": true
+          },
+          {
+            "key": "index",
+            "value": "products",
+            "active": true
+          }
+        ],
+        "body": {
+          "contentType": null,
+          "body": null
+        },
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        }
+      },
+      {
+        "v": 1,
+        "name": "2. Sub-Millisecond Search (wireless)",
+        "method": "GET",
+        "endpoint": "http://localhost:8001/api/search",
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "active": true
+          }
+        ],
+        "params": [
+          {
+            "key": "q",
+            "value": "wireless",
+            "active": true
+          },
+          {
+            "key": "limit",
+            "value": "10",
+            "active": true
+          },
+          {
+            "key": "index",
+            "value": "products",
+            "active": true
+          }
+        ],
+        "body": {
+          "contentType": null,
+          "body": null
+        },
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        }
+      },
+      {
+        "v": 1,
+        "name": "3. Live Side-by-Side Compare (Strata vs Postgres)",
+        "method": "GET",
+        "endpoint": "http://localhost:8001/api/compare",
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "active": true
+          }
+        ],
+        "params": [
+          {
+            "key": "q",
+            "value": "mechanical keyboard",
+            "active": true
+          },
+          {
+            "key": "limit",
+            "value": "10",
+            "active": true
+          },
+          {
+            "key": "index",
+            "value": "products",
+            "active": true
+          }
+        ],
+        "body": {
+          "contentType": null,
+          "body": null
+        },
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        }
+      },
+      {
+        "v": 1,
+        "name": "4. Filtered Query (Gaming + In-Stock)",
+        "method": "GET",
+        "endpoint": "http://localhost:8001/api/search",
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "active": true
+          }
+        ],
+        "params": [
+          {
+            "key": "q",
+            "value": "Gaming",
+            "active": true
+          },
+          {
+            "key": "status",
+            "value": "active",
+            "active": true
+          },
+          {
+            "key": "limit",
+            "value": "10",
+            "active": true
+          },
+          {
+            "key": "index",
+            "value": "products",
+            "active": true
+          }
+        ],
+        "body": {
+          "contentType": null,
+          "body": null
+        },
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        }
+      },
+      {
+        "v": 1,
+        "name": "5. Atomic Tombstone Deletion",
+        "method": "GET",
+        "endpoint": "http://localhost:8001/api/delete",
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "active": true
+          }
+        ],
+        "params": [
+          {
+            "key": "id",
+            "value": "1600002",
+            "active": true
+          },
+          {
+            "key": "index",
+            "value": "products",
+            "active": true
+          }
+        ],
+        "body": {
+          "contentType": null,
+          "body": null
+        },
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        }
+      },
+      {
+        "v": 1,
+        "name": "6. Strata Health Check",
+        "method": "GET",
+        "endpoint": "http://localhost:8001/api/health",
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "active": true
+          }
+        ],
+        "params": [],
+        "body": {
+          "contentType": null,
+          "body": null
+        },
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        }
+      }
+    ]
+  },
+  {
+    "v": 2,
+    "name": "Project 2: PostgreSQL GIN Baseline (Port 8002)",
+    "folders": [],
+    "requests": [
+      {
+        "v": 1,
+        "name": "1. PostgreSQL GIN Search (mechanical keyboard)",
+        "method": "GET",
+        "endpoint": "http://localhost:8002/api/search",
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "active": true
+          }
+        ],
+        "params": [
+          {
+            "key": "q",
+            "value": "mechanical keyboard",
+            "active": true
+          },
+          {
+            "key": "limit",
+            "value": "10",
+            "active": true
+          }
+        ],
+        "body": {
+          "contentType": null,
+          "body": null
+        },
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        }
+      },
+      {
+        "v": 1,
+        "name": "2. PostgreSQL GIN Search (wireless)",
+        "method": "GET",
+        "endpoint": "http://localhost:8002/api/search",
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "active": true
+          }
+        ],
+        "params": [
+          {
+            "key": "q",
+            "value": "wireless",
+            "active": true
+          },
+          {
+            "key": "limit",
+            "value": "10",
+            "active": true
+          }
+        ],
+        "body": {
+          "contentType": null,
+          "body": null
+        },
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        }
+      },
+      {
+        "v": 1,
+        "name": "3. PostgreSQL Filtered Query (Gaming + Active)",
+        "method": "GET",
+        "endpoint": "http://localhost:8002/api/search",
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "active": true
+          }
+        ],
+        "params": [
+          {
+            "key": "q",
+            "value": "Gaming",
+            "active": true
+          },
+          {
+            "key": "status",
+            "value": "active",
+            "active": true
+          },
+          {
+            "key": "limit",
+            "value": "10",
+            "active": true
+          }
+        ],
+        "body": {
+          "contentType": null,
+          "body": null
+        },
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        }
+      },
+      {
+        "v": 1,
+        "name": "4. PostgreSQL Health Check",
+        "method": "GET",
+        "endpoint": "http://localhost:8002/api/health",
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "active": true
+          }
+        ],
+        "params": [],
+        "body": {
+          "contentType": null,
+          "body": null
+        },
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        }
+      }
+    ]
+  }
+]

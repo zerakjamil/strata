@@ -207,15 +207,13 @@ final class SegmentReader
                     $sumSecondaryU += $sU;
 
                     [$secDocIds, $secFreqs] = $this->readPostings($secEntry['offset']);
-                    $docFreqMap = [];
-                    $secCount = count($secDocIds);
-                    for ($s = 1; $s <= $secCount; $s++) {
-                        $docFreqMap[$secDocIds[$s]] = $secFreqs[$s] ?? 1;
-                    }
 
                     $secondaryPostings[] = [
                         'idf' => $sIdf,
-                        'map' => $docFreqMap,
+                        'docIds' => $secDocIds,
+                        'freqs' => $secFreqs,
+                        'count' => count($secDocIds),
+                        'ptr' => 1,
                         'u' => $sU,
                     ];
                 }
@@ -243,15 +241,30 @@ final class SegmentReader
                     $freq = $anchorFreqs[$i] ?? 1;
                     $score = $primaryIdf * ($freq * 2.2) / ($freq + 1.2);
 
-                    // Accumulate all matched secondary terms (O(1) hash lookups)
+                    // Accumulate all matched secondary terms via zero-allocation galloping two-pointer walk
                     $matchedSecondary = false;
-                    foreach ($secondaryPostings as $sec) {
-                        if (isset($sec['map'][$docId])) {
-                            $sf = $sec['map'][$docId];
+                    foreach ($secondaryPostings as &$sec) {
+                        $p = &$sec['ptr'];
+                        $sCount = $sec['count'];
+                        $sDocs = $sec['docIds'];
+
+                        while ($p <= $sCount && $sDocs[$p] < $docId) {
+                            $jump = 1;
+                            while (($p + $jump) <= $sCount && $sDocs[$p + $jump] < $docId) {
+                                $p += $jump;
+                                $jump <<= 1;
+                            }
+                            $p++;
+                        }
+
+                        if ($p <= $sCount && $sDocs[$p] === $docId) {
+                            $sf = $sec['freqs'][$p] ?? 1;
                             $score += ($sec['idf'] * ($sf * 2.2) / ($sf + 1.2));
                             $matchedSecondary = true;
+                            $p++;
                         }
                     }
+                    unset($sec);
 
                     if ($matchedSecondary || $score >= $sharedTheta || count($candidateScores) < ($limit + $offset)) {
                         $candidateScores[$docId] = $score;
@@ -337,8 +350,15 @@ final class SegmentReader
      * Read postings list at given relative byte offset.
      * Returns: [array<int, int> $docIds, array<int, int> $freqs]
      */
+    /** @var array<int, array{0: array<int, int>, 1: array<int, int>}> */
+    private array $postingsCache = [];
+
     private function readPostings(int $postingsOffset): array
     {
+        if (isset($this->postingsCache[$postingsOffset])) {
+            return $this->postingsCache[$postingsOffset];
+        }
+
         $absOffset = $this->header->postingsOffset + $postingsOffset;
         fseek($this->stream, $absOffset);
 
@@ -356,7 +376,12 @@ final class SegmentReader
         $docIds = unpack('V*', substr($payload, 0, $docCount * 4));
         $freqs = unpack('C*', substr($payload, $docCount * 4, $docCount));
 
-        return [$docIds, $freqs];
+        $res = [$docIds, $freqs];
+        if (count($this->postingsCache) < 15) {
+            $this->postingsCache[$postingsOffset] = $res;
+        }
+
+        return $res;
     }
 
     /**
