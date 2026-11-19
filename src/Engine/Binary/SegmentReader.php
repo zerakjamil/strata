@@ -203,6 +203,12 @@ final class SegmentReader
                     $secEntry = $matchedTerms[$secTerm];
                     $sIdf = $this->bm25->idf($docCount, $secEntry['df']);
                     $sU = $sIdf * 2.2;
+
+                    // Skip near-zero discriminative terms (corpus-wide stopwords with negligible IDF)
+                    if ($sU < 0.01) {
+                        continue;
+                    }
+
                     $maxSegmentScore += $sU;
                     $sumSecondaryU += $sU;
 
