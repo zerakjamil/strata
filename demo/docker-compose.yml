@@ -5,7 +5,7 @@ services:
       dockerfile: demo/Dockerfile
     container_name: strata_fastpath_api
     restart: unless-stopped
-    command: ["php", "-S", "0.0.0.0:80", "demo/strata-server.php"]
+    command: ["php", "demo/strata-server.php"]
     environment:
       STRATA_PATH: /app/vendor/orchestra/testbench-core/laravel/storage/strata
       DB_HOST: host.docker.internal

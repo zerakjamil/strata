@@ -22,8 +22,13 @@ final class SegmentReader
     private TokenizerInterface $tokenizer;
     private ReciprocalRankFusion $rrf;
 
-    /** @var array<string, array{offset: int, df: int}> */
-    private ?array $termDictCache = null;
+    /** @var array<string, array{offset: int, df: int}|null> */
+    private array $termLookupCache = [];
+    private ?string $dictBuffer = null;
+    private int $dictStrideCount = 0;
+    /** @var array<int, int> */
+    private array $dictStrides = [];
+    private int $dictEntriesBase = 0;
 
     public function __construct(
         string $filePath,
@@ -103,10 +108,10 @@ final class SegmentReader
      */
     public function findDocIndexByKey(string|int $key): ?int
     {
-        $this->loadTermDictionary();
         $idToken = '_id#' . $key;
-        if (isset($this->termDictCache[$idToken])) {
-            [$docIds] = $this->readPostings($this->termDictCache[$idToken]['offset']);
+        $entry = $this->getTermEntry($idToken);
+        if ($entry !== null) {
+            [$docIds] = $this->readPostings($entry['offset']);
             return !empty($docIds) ? $docIds[1] : null;
         }
 
@@ -154,13 +159,12 @@ final class SegmentReader
         $candidateScores = [];
 
         if (!empty($tokens)) {
-            $this->loadTermDictionary();
-
-            // Match available tokens in dictionary
+            // Match available tokens in dictionary using O(log N) stride binary search
             $matchedTerms = [];
             foreach ($tokens as $token) {
-                if (isset($this->termDictCache[$token])) {
-                    $matchedTerms[$token] = $this->termDictCache[$token];
+                $entry = $this->getTermEntry($token);
+                if ($entry !== null) {
+                    $matchedTerms[$token] = $entry;
                 }
             }
 
@@ -242,6 +246,9 @@ final class SegmentReader
                         }
                     }
                 } else {
+                    $collected = 0;
+                    $targetCandidates = max(20, $limit * 2);
+
                     for ($i = 1; $i <= $anchorCount; $i++) {
                         $docId = $anchorDocIds[$i];
 
@@ -255,8 +262,9 @@ final class SegmentReader
                         $freq = $anchorFreqs[$i] ?? 1;
                         $score = $primaryIdf * ($freq * 2.2) / ($freq + 1.2);
 
-                        if ($score > $sharedTheta || count($candidateScores) < $limit) {
+                        if ($score > $sharedTheta || $collected < $limit) {
                             $candidateScores[$docId] = $score;
+                            $collected++;
                             $topScoresHeap[] = $score;
                             if (count($topScoresHeap) >= $limit) {
                                 sort($topScoresHeap);
@@ -266,7 +274,11 @@ final class SegmentReader
                                 $sharedTheta = max($sharedTheta, $topScoresHeap[0]);
                             }
 
-                            if (count($candidateScores) >= max(20, $limit * 2)) {
+                            if ($collected >= $targetCandidates) {
+                                break;
+                            }
+                        } elseif ($collected >= $limit) {
+                            if ($primaryU <= $sharedTheta) {
                                 break;
                             }
                         }
@@ -400,18 +412,16 @@ final class SegmentReader
     {
         $docCount = $this->header->docCount;
         $matchingMask = new TombstoneBitmask($docCount);
-        $this->loadTermDictionary();
-
         $matchingDocIds = null;
 
         foreach ($filters as $key => $val) {
             $filterToken = '_f:' . $key . '#' . (is_bool($val) ? ($val ? '1' : '0') : (string)$val);
+            $entry = $this->getTermEntry($filterToken);
 
-            if (!isset($this->termDictCache[$filterToken])) {
+            if ($entry === null) {
                 return new TombstoneBitmask($docCount, str_repeat("\xFF", (int)ceil($docCount / 8)));
             }
 
-            $entry = $this->termDictCache[$filterToken];
             [$postDocIds] = $this->readPostings($entry['offset']);
             $currentIds = array_fill_keys($postDocIds, true);
 
@@ -432,42 +442,77 @@ final class SegmentReader
     }
 
     /**
-     * Load term dictionary into in-memory hash table on first query.
+     * Locate term in dictionary using O(log N) stride binary search.
+     *
+     * @param string $term
+     * @return array{offset: int, df: int}|null
      */
-    private function loadTermDictionary(): void
+    public function getTermEntry(string $term): ?array
     {
-        if ($this->termDictCache !== null) {
-            return;
+        if (array_key_exists($term, $this->termLookupCache)) {
+            return $this->termLookupCache[$term];
         }
 
-        $this->termDictCache = [];
-        fseek($this->stream, $this->header->dictOffset);
-        $dictData = (string) fread($this->stream, $this->header->dictLength);
-
-        if (strlen($dictData) < 8) {
-            return;
+        if ($this->dictBuffer === null) {
+            fseek($this->stream, $this->header->dictOffset);
+            $this->dictBuffer = (string) fread($this->stream, $this->header->dictLength);
+            if (strlen($this->dictBuffer) < 8) {
+                return $this->termLookupCache[$term] = null;
+            }
+            $this->dictStrideCount = unpack('V', substr($this->dictBuffer, 4, 4))[1];
+            $this->dictStrides = unpack('V*', substr($this->dictBuffer, 8, $this->dictStrideCount * 4));
+            $this->dictEntriesBase = 8 + ($this->dictStrideCount * 4);
         }
 
-        $termCount = unpack('V', substr($dictData, 0, 4))[1];
-        $strideCount = unpack('V', substr($dictData, 4, 4))[1];
+        if ($this->dictStrideCount === 0) {
+            return $this->termLookupCache[$term] = null;
+        }
 
-        $cursor = 8 + ($strideCount * 4);
-        $totalLen = strlen($dictData);
+        // Binary search across strides (64 terms per stride)
+        $low = 1;
+        $high = $this->dictStrideCount;
+        $bestStride = 1;
 
-        for ($i = 0; $i < $termCount && $cursor < $totalLen; $i++) {
-            $termLen = ord($dictData[$cursor++]);
-            $term = substr($dictData, $cursor, $termLen);
-            $cursor += $termLen;
+        while ($low <= $high) {
+            $mid = ($low + $high) >> 1;
+            $offset = $this->dictEntriesBase + $this->dictStrides[$mid];
+            $tLen = ord($this->dictBuffer[$offset]);
+            $tStr = substr($this->dictBuffer, $offset + 1, $tLen);
 
-            $offset = unpack('V', substr($dictData, $cursor, 4))[1];
+            if (strcmp($tStr, $term) <= 0) {
+                $bestStride = $mid;
+                $low = $mid + 1;
+            } else {
+                $high = $mid - 1;
+            }
+        }
+
+        $cursor = $this->dictEntriesBase + $this->dictStrides[$bestStride];
+        $nextLimit = ($bestStride < $this->dictStrideCount)
+            ? ($this->dictEntriesBase + $this->dictStrides[$bestStride + 1])
+            : strlen($this->dictBuffer);
+
+        while ($cursor < $nextLimit) {
+            $tLen = ord($this->dictBuffer[$cursor++]);
+            $tStr = substr($this->dictBuffer, $cursor, $tLen);
+            $cursor += $tLen;
+
+            $offset = unpack('V', substr($this->dictBuffer, $cursor, 4))[1];
             $cursor += 4;
-            $df = unpack('V', substr($dictData, $cursor, 4))[1];
+            $df = unpack('V', substr($this->dictBuffer, $cursor, 4))[1];
             $cursor += 4;
 
-            $this->termDictCache[$term] = [
-                'offset' => $offset,
-                'df' => $df,
-            ];
+            if ($tStr === $term) {
+                return $this->termLookupCache[$term] = [
+                    'offset' => $offset,
+                    'df' => $df,
+                ];
+            }
+            if (strcmp($tStr, $term) > 0) {
+                break;
+            }
         }
+
+        return $this->termLookupCache[$term] = null;
     }
 }
