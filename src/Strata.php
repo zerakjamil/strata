@@ -90,6 +90,18 @@ final class Strata
                     $theta = max($theta, $topScoresHeap[0]);
                 }
             }
+
+            // Multi-Segment Block-Max Early Termination:
+            // When we have accumulated at least $neededCount candidates in the top-K heap
+            // and the minimum score in the heap ($theta) satisfies all query terms (or cannot
+            // be beaten by partial matches in remaining segments), terminate cross-segment scan.
+            if ($fastPath && count($topScoresHeap) >= $neededCount && $theta > 0.0) {
+                $tokens = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower(trim($query)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+                $minFullMatchScore = count($tokens) >= 2 ? (count($tokens) * 1.8) : 1.5;
+                if ($theta >= $minFullMatchScore) {
+                    break;
+                }
+            }
         }
 
         // Global sort by _score descending
