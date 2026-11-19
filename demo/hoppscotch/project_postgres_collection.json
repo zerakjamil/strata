@@ -1,50 +1,118 @@
 [
   {
-    "v": 2,
+    "v": 1,
     "name": "Project 2: PostgreSQL GIN Baseline (Port 8002)",
     "folders": [],
     "requests": [
       {
         "v": "1",
-        "name": "1. PostgreSQL Full-Text Search (mechanical keyboard)",
+        "name": "1. PostgreSQL GIN Search (mechanical keyboard)",
         "method": "GET",
-        "endpoint": "<<base_url>>/api/search",
+        "endpoint": "http://localhost:8002/api/search",
         "params": [
-          { "key": "q", "value": "mechanical keyboard", "active": true },
-          { "key": "limit", "value": "10", "active": true }
+          {
+            "key": "q",
+            "value": "mechanical keyboard",
+            "active": true
+          },
+          {
+            "key": "limit",
+            "value": "10",
+            "active": true
+          }
         ],
-        "headers": []
+        "headers": [],
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        },
+        "body": {
+          "contentType": null,
+          "body": null
+        }
       },
       {
         "v": "1",
-        "name": "2. PostgreSQL Single Term Search (wireless)",
+        "name": "2. PostgreSQL GIN Search (wireless)",
         "method": "GET",
-        "endpoint": "<<base_url>>/api/search",
+        "endpoint": "http://localhost:8002/api/search",
         "params": [
-          { "key": "q", "value": "wireless", "active": true },
-          { "key": "limit", "value": "10", "active": true }
+          {
+            "key": "q",
+            "value": "wireless",
+            "active": true
+          },
+          {
+            "key": "limit",
+            "value": "10",
+            "active": true
+          }
         ],
-        "headers": []
+        "headers": [],
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        },
+        "body": {
+          "contentType": null,
+          "body": null
+        }
       },
       {
         "v": "1",
-        "name": "3. PostgreSQL Filtered Query (active products)",
+        "name": "3. PostgreSQL Filtered Query (Gaming + Active)",
         "method": "GET",
-        "endpoint": "<<base_url>>/api/search",
+        "endpoint": "http://localhost:8002/api/search",
         "params": [
-          { "key": "q", "value": "chair", "active": true },
-          { "key": "status", "value": "active", "active": true },
-          { "key": "limit", "value": "10", "active": true }
+          {
+            "key": "q",
+            "value": "Gaming",
+            "active": true
+          },
+          {
+            "key": "status",
+            "value": "active",
+            "active": true
+          },
+          {
+            "key": "limit",
+            "value": "10",
+            "active": true
+          }
         ],
-        "headers": []
+        "headers": [],
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        },
+        "body": {
+          "contentType": null,
+          "body": null
+        }
       },
       {
         "v": "1",
-        "name": "4. Service Health Check",
+        "name": "4. PostgreSQL Health Check",
         "method": "GET",
-        "endpoint": "<<base_url>>/api/health",
+        "endpoint": "http://localhost:8002/api/health",
         "params": [],
-        "headers": []
+        "headers": [],
+        "preRequestScript": "",
+        "testScript": "",
+        "auth": {
+          "authType": "inherit",
+          "authActive": true
+        },
+        "body": {
+          "contentType": null,
+          "body": null
+        }
       }
     ]
   }

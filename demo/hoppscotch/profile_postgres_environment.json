@@ -1,16 +1,19 @@
 [
   {
+    "v": 2,
     "id": "profile-postgres",
     "name": "PostgreSQL Port 8002 Profile",
     "variables": [
       {
         "key": "base_url",
-        "value": "http://localhost:8002",
+        "initialValue": "http://localhost:8002",
+        "currentValue": "http://localhost:8002",
         "secret": false
       },
       {
         "key": "engine",
-        "value": "PostgreSQL 17 (tsvector + GIN)",
+        "initialValue": "PostgreSQL (tsvector + GIN)",
+        "currentValue": "PostgreSQL (tsvector + GIN)",
         "secret": false
       }
     ]

@@ -1,16 +1,19 @@
 [
   {
+    "v": 2,
     "id": "profile-strata",
     "name": "Strata Port 8001 Profile",
     "variables": [
       {
         "key": "base_url",
-        "value": "http://localhost:8001",
+        "initialValue": "http://localhost:8001",
+        "currentValue": "http://localhost:8001",
         "secret": false
       },
       {
         "key": "engine",
-        "value": "Strata (In-Process Block-Max WAND)",
+        "initialValue": "Strata (In-Process Block-Max WAND)",
+        "currentValue": "Strata (In-Process Block-Max WAND)",
         "secret": false
       }
     ]
