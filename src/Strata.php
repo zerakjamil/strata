@@ -13,6 +13,8 @@ final class Strata
     private string $storagePath;
     /** @var array<string, Manifest> */
     private array $manifests = [];
+    /** @var array<string, int> */
+    private array $manifestMtimes = [];
     /** @var array<string, SegmentReader> */
     private array $readers = [];
 
@@ -37,6 +39,7 @@ final class Strata
      * @param string|null $queryVector
      * @param array<string, scalar> $filters
      * @param int $limit
+     * @param int $offset
      * @param bool $fastPath
      * @return array<int, array<string, mixed>>
      */
@@ -46,12 +49,14 @@ final class Strata
         ?string $queryVector = null,
         array $filters = [],
         int $limit = 20,
+        int $offset = 0,
         bool $fastPath = true
     ): array {
         $manifest = $this->getManifest($index);
         $results = [];
         $theta = 0.0;
         $topScoresHeap = [];
+        $neededCount = $limit + $offset;
 
         foreach ($manifest->segments as $segMeta) {
             $path = $segMeta['path'];
@@ -68,6 +73,7 @@ final class Strata
                 queryVector: $queryVector,
                 filters: $filters,
                 limit: $limit,
+                offset: $offset,
                 fastPath: $fastPath,
                 sharedTheta: $theta
             );
@@ -76,9 +82,9 @@ final class Strata
                 $results[] = $r;
                 $score = (float)($r['_score'] ?? 0.0);
                 $topScoresHeap[] = $score;
-                if (count($topScoresHeap) >= $limit) {
+                if (count($topScoresHeap) >= $neededCount) {
                     sort($topScoresHeap);
-                    if (count($topScoresHeap) > $limit) {
+                    if (count($topScoresHeap) > $neededCount) {
                         array_shift($topScoresHeap);
                     }
                     $theta = max($theta, $topScoresHeap[0]);
@@ -89,8 +95,8 @@ final class Strata
         // Global sort by _score descending
         usort($results, fn($a, $b) => ($b['_score'] ?? 0.0) <=> ($a['_score'] ?? 0.0));
 
-        if ($limit > 0 && count($results) > $limit) {
-            return array_slice($results, 0, $limit);
+        if ($offset > 0 || ($limit > 0 && count($results) > $limit)) {
+            return array_slice($results, $offset, $limit > 0 ? $limit : null);
         }
 
         return $results;
@@ -134,24 +140,52 @@ final class Strata
 
     public function getManifest(string $index = 'default'): Manifest
     {
-        if (!isset($this->manifests[$index])) {
-            $indexPath = $this->getStoragePath($index);
-            $manifestFile = $indexPath . '/manifest.json';
+        $indexPath = $this->getStoragePath($index);
+        $manifestFile = $indexPath . '/manifest.json';
 
+        if (!file_exists($manifestFile)) {
+            // Fallback to root storage directory for backward compatibility with default benchmarks
+            $manifestFile = $this->storagePath . '/manifest.json';
+        }
+
+        $mtime = file_exists($manifestFile) ? (filemtime($manifestFile) ?: 0) : 0;
+
+        if (!isset($this->manifests[$index]) || ($this->manifestMtimes[$index] ?? 0) < $mtime) {
             if (file_exists($manifestFile)) {
                 $this->manifests[$index] = Manifest::load($manifestFile);
+                $this->manifestMtimes[$index] = $mtime;
             } else {
-                // Fallback to root storage directory for backward compatibility with default benchmarks
-                $rootManifest = $this->storagePath . '/manifest.json';
-                if (file_exists($rootManifest)) {
-                    $this->manifests[$index] = Manifest::load($rootManifest);
-                } else {
-                    $this->manifests[$index] = new Manifest();
-                }
+                $this->manifests[$index] = new Manifest();
+                $this->manifestMtimes[$index] = 0;
             }
         }
 
         return $this->manifests[$index];
+    }
+
+    public function deleteIndex(string $index): void
+    {
+        $path = $this->getStoragePath($index);
+        if (is_dir($path)) {
+            $files = glob($path . '/*');
+            if ($files) {
+                foreach ($files as $f) {
+                    if (is_file($f)) {
+                        @unlink($f);
+                    }
+                }
+            }
+            @rmdir($path);
+        }
+
+        foreach ($this->readers as $segPath => $reader) {
+            if (str_starts_with($segPath, $path)) {
+                $reader->close();
+                unset($this->readers[$segPath]);
+            }
+        }
+
+        unset($this->manifests[$index], $this->manifestMtimes[$index]);
     }
 
     public function getStoragePath(string $index = ''): string

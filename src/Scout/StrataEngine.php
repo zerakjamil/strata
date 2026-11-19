@@ -65,19 +65,50 @@ final class StrataEngine extends Engine
             return;
         }
 
-        $writer = new SegmentWriter();
-        $storageDir = $this->strata->getStoragePath($indexName);
-        if (!is_dir($storageDir)) {
-            mkdir($storageDir, 0755, true);
+        $keys = $models->map(fn($m) => $m->getScoutKey())->all();
+
+        $updateAction = function () use ($keys, $indexName, $documents): void {
+            // Tombstone previous versions in existing segments to prevent duplicates
+            $this->strata->deleteKeys($keys, $indexName);
+
+            $writer = new SegmentWriter();
+            $storageDir = $this->strata->getStoragePath($indexName);
+            if (!is_dir($storageDir)) {
+                mkdir($storageDir, 0755, true);
+            }
+            $segName = 'seg_' . time() . '_' . bin2hex(random_bytes(3)) . '.seg';
+            $segPath = $storageDir . '/' . $segName;
+
+            $writer->write($segPath, $documents);
+
+            $manifest = $this->strata->getManifest($indexName);
+            $manifest->addSegment($segPath, count($documents), level: 0);
+            $manifest->save($storageDir . '/manifest.json');
+        };
+
+        $firstModel = $models->first();
+        $conn = null;
+        try {
+            if (is_object($firstModel) && method_exists($firstModel, 'getConnection')) {
+                $conn = $firstModel->getConnection();
+            }
+        } catch (\Throwable) {
+            $conn = null;
         }
-        $segName = 'seg_' . time() . '_' . bin2hex(random_bytes(3)) . '.seg';
-        $segPath = $storageDir . '/' . $segName;
 
-        $writer->write($segPath, $documents);
+        if ($conn === null && class_exists(DB::class)) {
+            try {
+                $conn = DB::connection();
+            } catch (\Throwable) {
+                $conn = null;
+            }
+        }
 
-        $manifest = $this->strata->getManifest($indexName);
-        $manifest->addSegment($segPath, count($documents), level: 0);
-        $manifest->save($storageDir . '/manifest.json');
+        if ($conn !== null && method_exists($conn, 'transactionLevel') && $conn->transactionLevel() > 0) {
+            $conn->afterCommit($updateAction);
+        } else {
+            $updateAction();
+        }
     }
 
     /**
@@ -99,8 +130,26 @@ final class StrataEngine extends Engine
             $this->strata->deleteKeys($keys, $indexName);
         };
 
-        if (class_exists(\Illuminate\Support\Facades\DB::class) && \Illuminate\Support\Facades\DB::transactionLevel() > 0) {
-            \Illuminate\Support\Facades\DB::afterCommit($action);
+        $firstModel = $models->first();
+        $conn = null;
+        try {
+            if (is_object($firstModel) && method_exists($firstModel, 'getConnection')) {
+                $conn = $firstModel->getConnection();
+            }
+        } catch (\Throwable) {
+            $conn = null;
+        }
+
+        if ($conn === null && class_exists(DB::class)) {
+            try {
+                $conn = DB::connection();
+            } catch (\Throwable) {
+                $conn = null;
+            }
+        }
+
+        if ($conn !== null && method_exists($conn, 'transactionLevel') && $conn->transactionLevel() > 0) {
+            $conn->afterCommit($action);
         } else {
             $action();
         }
@@ -121,23 +170,42 @@ final class StrataEngine extends Engine
      */
     public function paginate(Builder $builder, $perPage, $page): array
     {
+        $page = max(1, (int)$page);
+        $perPage = max(1, (int)$perPage);
+        $offset = ($page - 1) * $perPage;
+
         return $this->performSearch($builder, [
             'limit' => $perPage,
-            'page' => $page,
+            'offset' => $offset,
+            'paginate' => true,
         ]);
     }
 
     protected function performSearch(Builder $builder, array $options = []): array
     {
         $limit = $options['limit'] ?? 20;
+        $offset = $options['offset'] ?? 0;
+        $isPaginate = (bool)($options['paginate'] ?? false);
+        $index = $builder->index ?: $builder->model->searchableAs();
 
-        return $this->strata->search(
-            index: $builder->index ?: $builder->model->searchableAs(),
+        $results = $this->strata->search(
+            index: $index,
             query: $builder->query,
             filters: $builder->wheres,
             limit: $limit,
+            offset: $offset,
             fastPath: true
         );
+
+        if ($isPaginate) {
+            $manifest = $this->strata->getManifest($index);
+            return [
+                'results' => $results,
+                'total' => $manifest->totalDocs > 0 ? $manifest->totalDocs : count($results),
+            ];
+        }
+
+        return $results;
     }
 
     /**
@@ -145,7 +213,8 @@ final class StrataEngine extends Engine
      */
     public function mapIds($results): \Illuminate\Support\Collection
     {
-        return collect($results)->pluck('id')->values();
+        $records = is_array($results) && isset($results['results']) ? $results['results'] : $results;
+        return collect($records)->pluck('id')->values();
     }
 
     /**
@@ -153,11 +222,12 @@ final class StrataEngine extends Engine
      */
     public function map(Builder $builder, $results, $model): Collection
     {
-        if (empty($results)) {
+        $records = is_array($results) && isset($results['results']) ? $results['results'] : $results;
+        if (empty($records)) {
             return $model->newCollection();
         }
 
-        $objectIds = collect($results)->pluck('id')->values()->all();
+        $objectIds = collect($records)->pluck('id')->values()->all();
         $objectIdPositions = array_flip($objectIds);
 
         return $model->getScoutModelsByIds($builder, $objectIds)
@@ -183,6 +253,10 @@ final class StrataEngine extends Engine
      */
     public function getTotalCount($results): int
     {
+        if (is_array($results) && isset($results['total'])) {
+            return (int)$results['total'];
+        }
+
         return count($results);
     }
 
@@ -191,7 +265,8 @@ final class StrataEngine extends Engine
      */
     public function flush($model): void
     {
-        // Flush active segments
+        $index = $model->searchableAs();
+        $this->deleteIndex($index);
     }
 
     /**
@@ -199,7 +274,12 @@ final class StrataEngine extends Engine
      */
     public function createIndex($name, array $options = []): void
     {
-        // Handled automatically by segment manifest
+        $path = $this->strata->getStoragePath((string)$name);
+        if (!is_dir($path)) {
+            mkdir($path, 0755, true);
+        }
+        $manifest = new Manifest();
+        $manifest->save($path . '/manifest.json');
     }
 
     /**
@@ -207,6 +287,6 @@ final class StrataEngine extends Engine
      */
     public function deleteIndex($name): void
     {
-        // Handled automatically by segment manifest
+        $this->strata->deleteIndex((string)$name);
     }
 }

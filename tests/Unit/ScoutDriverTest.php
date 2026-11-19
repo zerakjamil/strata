@@ -85,4 +85,62 @@ final class ScoutDriverTest extends TestCase
         @rmdir(dirname($segPath));
         @rmdir($tempDir);
     }
+
+    public function testScoutPaginationAndTotalCount(): void
+    {
+        $tempDir = sys_get_temp_dir() . '/strata_page_' . uniqid();
+        mkdir($tempDir, 0755, true);
+
+        $strata = new Strata(['path' => $tempDir]);
+        $engine = new StrataEngine($strata);
+
+        $models = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $id = 200 + $i;
+            $models[] = new class($id) extends Model {
+                public function __construct(public int $mid) {}
+                public function searchableAs(): string { return 'test_page_products'; }
+                public function getScoutKey(): int { return $this->mid; }
+                public function toSearchableArray(): array {
+                    return [
+                        'id' => $this->mid,
+                        'title' => "High Performance Mechanical Gaming Keyboard Model {$this->mid}",
+                    ];
+                }
+            };
+        }
+
+        $engine->update(new Collection($models));
+
+        // Create Scout builder mock
+        $builder = new \Laravel\Scout\Builder(new class extends Model {
+            public function searchableAs(): string { return 'test_page_products'; }
+            public function getScoutKeyName(): string { return 'id'; }
+        }, 'mechanical gaming keyboard');
+
+        // Test Page 1 (limit 2, page 1)
+        $page1Results = $engine->paginate($builder, 2, 1);
+        $this->assertIsArray($page1Results);
+        $this->assertArrayHasKey('results', $page1Results);
+        $this->assertCount(2, $page1Results['results']);
+        $this->assertEquals(5, $engine->getTotalCount($page1Results));
+
+        // Test Page 2 (limit 2, page 2)
+        $page2Results = $engine->paginate($builder, 2, 2);
+        $this->assertCount(2, $page2Results['results']);
+        $this->assertEquals(5, $engine->getTotalCount($page2Results));
+
+        // Verify page 1 and page 2 returned distinct items
+        $p1Ids = $engine->mapIds($page1Results)->all();
+        $p2Ids = $engine->mapIds($page2Results)->all();
+        $this->assertEmpty(array_intersect($p1Ids, $p2Ids), 'Paginated pages must not overlap');
+
+        // Test Index Flushing
+        $engine->flush($models[0]);
+        $afterFlush = $strata->search('test_page_products', 'keyboard');
+        $this->assertCount(0, $afterFlush);
+
+        // Clean up
+        @rmdir($tempDir);
+    }
 }

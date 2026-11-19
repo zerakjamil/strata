@@ -19,7 +19,7 @@ Canonical records remain safely stored in PostgreSQL, while Strata serves real-t
 - **Transactional Ghost Leases**: Hooks into Laravel's `DB::afterCommit()` lifecycle to prevent search index corruption on transaction rollbacks, with 4-nanosecond atomic `.del` bitmask tombstoning.
 - **Multi-Tenant Index Isolation**: Distinct segment partitions and manifests per model namespace (`Strata::index('products')`).
 - **Fast-Path Columnar DocStore**: Streams pre-serialized JSON records from memory in under 0.1ms without Eloquent model hydration or database queries.
-- **Zero JVM Dependencies**: In-process engine operating on memory-mapped segment files with no external search clusters.
+- **Zero JVM Dependencies**: In-process engine operating on binary segment files with persistent stride dictionaries, OS page-cache buffering, and no external search clusters.
 - **Laravel Scout Driver**: Implements full Laravel Scout contracts (`update`, `delete`, `search`, `paginate`) for Eloquent models.
 - **Octane Pre-Warming**: Pre-warms index dictionaries on worker boot.
 

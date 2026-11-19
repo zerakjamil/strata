@@ -34,12 +34,13 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Memory-Mapped I/O Mode
+    | In-Process Persistent Worker Mode
     |--------------------------------------------------------------------------
     |
-    | When enabled and PHP ext-ffi is installed, Strata uses zero-copy mmap.
-    | Set to false to force stream-based file reading.
+    | When running inside persistent runtimes (Laravel Octane / FrankenPHP /
+    | Swoole / RoadRunner), Strata maintains active segment readers, stride
+    | dictionaries, and bitmask handles hot in worker process memory.
     |
     */
-    'mmap' => true,
+    'persistent_worker' => true,
 ];

@@ -13,6 +13,7 @@ final class StrataBuilder
     private ?string $queryVector = null;
     private array $filters = [];
     private int $limit = 20;
+    private int $offset = 0;
     private bool $fastPath = false;
     private ScalarQuantizer $quantizer;
 
@@ -66,6 +67,12 @@ final class StrataBuilder
         return $this;
     }
 
+    public function offset(int $offset): self
+    {
+        $this->offset = $offset;
+        return $this;
+    }
+
     /**
      * Enable Fast-Path projection: returns pre-serialized JSON records directly from
      * memory in <0.1ms without executing any database SQL queries.
@@ -77,19 +84,26 @@ final class StrataBuilder
     }
 
     /**
-     * Execute the query and return the result set.
+     * Execute the query and return the result set as an Eloquent/Support Collection.
      *
-     * @return array<int, array<string, mixed>>
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>|array<int, array<string, mixed>>
      */
-    public function get(): array
+    public function get(): mixed
     {
-        return $this->strata->search(
+        $results = $this->strata->search(
             index: $this->index,
             query: $this->query,
             queryVector: $this->queryVector,
             filters: $this->filters,
             limit: $this->limit,
+            offset: $this->offset,
             fastPath: $this->fastPath
         );
+
+        if (function_exists('collect')) {
+            return collect($results);
+        }
+
+        return $results;
     }
 }

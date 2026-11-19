@@ -51,6 +51,10 @@ final class StrataCompactCommand extends Command
             $docCount = $header->docCount;
 
             for ($d = 0; $d < $docCount; $d++) {
+                if ($reader->isDeleted($d)) {
+                    continue; // Skip tombstoned documents to prevent resurrection
+                }
+
                 // Read record payload
                 $ref = new \ReflectionMethod($reader, 'readDocStoreRecord');
                 $ref->setAccessible(true);

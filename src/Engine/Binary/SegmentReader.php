@@ -74,11 +74,16 @@ final class SegmentReader
         return new self($filePath);
     }
 
-    public function __destruct()
+    public function close(): void
     {
         if (is_resource($this->stream)) {
             fclose($this->stream);
         }
+    }
+
+    public function __destruct()
+    {
+        $this->close();
     }
 
     public function getHeader(): SegmentHeader
@@ -91,6 +96,8 @@ final class SegmentReader
         return $this->header->docCount - $this->header->deletedCount;
     }
 
+    private ?int $lastDelMtime = null;
+
     public function isDeleted(int $docId): bool
     {
         return $this->tombstone->isDeleted($docId);
@@ -100,7 +107,21 @@ final class SegmentReader
     {
         $this->tombstone->markDeleted($docId);
         $delPath = substr($this->filePath, 0, -4) . '.del';
-        file_put_contents($delPath, $this->tombstone->toBinary());
+        file_put_contents($delPath, $this->tombstone->toBinary(), LOCK_EX);
+        $this->lastDelMtime = filemtime($delPath) ?: time();
+    }
+
+    private function syncDeltaTombstones(): void
+    {
+        $delPath = substr($this->filePath, 0, -4) . '.del';
+        if (file_exists($delPath)) {
+            $mtime = filemtime($delPath) ?: 0;
+            if ($this->lastDelMtime === null || $mtime > $this->lastDelMtime) {
+                $delRaw = (string) file_get_contents($delPath);
+                $this->tombstone->merge($delRaw);
+                $this->lastDelMtime = $mtime;
+            }
+        }
     }
 
     /**
@@ -108,6 +129,7 @@ final class SegmentReader
      */
     public function findDocIndexByKey(string|int $key): ?int
     {
+        $this->syncDeltaTombstones();
         $idToken = '_id#' . $key;
         $entry = $this->getTermEntry($idToken);
         if ($entry !== null) {
@@ -126,6 +148,7 @@ final class SegmentReader
         ?string $queryVector = null,
         array $filters = [],
         int $limit = 20,
+        int $offset = 0,
         bool $fastPath = true,
         float &$sharedTheta = 0.0
     ): array {
@@ -133,6 +156,8 @@ final class SegmentReader
         if ($docCount === 0) {
             return [];
         }
+
+        $this->syncDeltaTombstones();
 
         // 1. Evaluate filter set (if any filters supplied)
         $filterDocIds = null;
@@ -158,7 +183,7 @@ final class SegmentReader
             }
 
             if (!empty($matchedTerms)) {
-                // Sort by document frequency ascending (least frequent term first)
+                // Sort by document frequency ascending (least frequent / highest IDF term leads)
                 uasort($matchedTerms, fn($a, $b) => $a['df'] <=> $b['df']);
 
                 $termKeys = array_keys($matchedTerms);
@@ -168,15 +193,31 @@ final class SegmentReader
                 $primaryIdf = $this->bm25->idf($docCount, $primaryEntry['df']);
                 $primaryU = $primaryIdf * 2.2;
 
-                // Compute Segment-level Block-Max upper bound before reading any postings
+                // Compute Segment-level Block-Max upper bound across all query terms
                 $maxSegmentScore = $primaryU;
-                $secondaryIdfs = [];
+                $secondaryPostings = [];
+                $sumSecondaryU = 0.0;
+
                 for ($t = 1; $t < count($termKeys); $t++) {
                     $secTerm = $termKeys[$t];
                     $secEntry = $matchedTerms[$secTerm];
                     $sIdf = $this->bm25->idf($docCount, $secEntry['df']);
-                    $secondaryIdfs[$t] = $sIdf;
-                    $maxSegmentScore += ($sIdf * 2.2);
+                    $sU = $sIdf * 2.2;
+                    $maxSegmentScore += $sU;
+                    $sumSecondaryU += $sU;
+
+                    [$secDocIds, $secFreqs] = $this->readPostings($secEntry['offset']);
+                    $docFreqMap = [];
+                    $secCount = count($secDocIds);
+                    for ($s = 1; $s <= $secCount; $s++) {
+                        $docFreqMap[$secDocIds[$s]] = $secFreqs[$s] ?? 1;
+                    }
+
+                    $secondaryPostings[] = [
+                        'idf' => $sIdf,
+                        'map' => $docFreqMap,
+                        'u' => $sU,
+                    ];
                 }
 
                 // If this segment cannot beat the current global K-th best score, prune segment completely
@@ -185,108 +226,53 @@ final class SegmentReader
                 }
 
                 [$anchorDocIds, $anchorFreqs] = $this->readPostings($primaryEntry['offset']);
-
-                // Prepare secondary terms posting sets and their theoretical upper bounds
-                $secondaryPostings = [];
-                $sumSecondaryU = 0.0;
-                for ($t = 1; $t < count($termKeys); $t++) {
-                    $secTerm = $termKeys[$t];
-                    $secEntry = $matchedTerms[$secTerm];
-                    [$secDocIds, $secFreqs] = $this->readPostings($secEntry['offset']);
-                    $secIdf = $secondaryIdfs[$t] ?? $this->bm25->idf($docCount, $secEntry['df']);
-                    $secU = $secIdf * 2.2;
-                    $sumSecondaryU += $secU;
-
-                    $docFreqMap = [];
-                    $secCount = count($secDocIds);
-                    for ($s = 1; $s <= $secCount; $s++) {
-                        $docFreqMap[$secDocIds[$s]] = $secFreqs[$s] ?? 1;
-                    }
-                    $secondaryPostings[] = [
-                        'idf' => $secIdf,
-                        'map' => $docFreqMap,
-                        'u' => $secU,
-                    ];
-                }
-
                 $anchorCount = count($anchorDocIds);
                 $topScoresHeap = [];
+                $targetCandidates = max(30, ($limit + $offset) * 2);
 
-                if (!empty($secondaryPostings)) {
-                    $sec = $secondaryPostings[0];
-                    $secMap = $sec['map'];
-                    $secIdf = $sec['idf'];
+                for ($i = 1; $i <= $anchorCount; $i++) {
+                    $docId = $anchorDocIds[$i];
 
-                    for ($i = 1; $i <= $anchorCount; $i++) {
-                        $docId = $anchorDocIds[$i];
+                    if ($this->tombstone->isDeleted($docId)) {
+                        continue;
+                    }
+                    if ($filterDocIds !== null && !isset($filterDocIds[$docId])) {
+                        continue;
+                    }
 
-                        if ($this->tombstone->isDeleted($docId)) {
-                            continue;
-                        }
-                        if ($filterDocIds !== null && !isset($filterDocIds[$docId])) {
-                            continue;
-                        }
+                    $freq = $anchorFreqs[$i] ?? 1;
+                    $score = $primaryIdf * ($freq * 2.2) / ($freq + 1.2);
 
-                        $freq = $anchorFreqs[$i] ?? 1;
-                        $primaryScore = $primaryIdf * ($freq * 2.2) / ($freq + 1.2);
-
-                        if (isset($secMap[$docId])) {
-                            $sf = $secMap[$docId];
-                            $score = $primaryScore + ($secIdf * ($sf * 2.2) / ($sf + 1.2));
-                            $candidateScores[$docId] = $score;
-                            $topScoresHeap[] = $score;
-
-                            if (count($topScoresHeap) >= $limit) {
-                                sort($topScoresHeap);
-                                if (count($topScoresHeap) > $limit) {
-                                    array_shift($topScoresHeap);
-                                }
-                                $sharedTheta = max($sharedTheta, $topScoresHeap[0]);
-                            }
-
-                            if (count($candidateScores) >= max(20, $limit * 2)) {
-                                break;
-                            }
-                        } elseif ($sharedTheta <= $primaryU && count($candidateScores) < $limit) {
-                            $candidateScores[$docId] = $primaryScore;
+                    // Accumulate all matched secondary terms (O(1) hash lookups)
+                    $matchedSecondary = false;
+                    foreach ($secondaryPostings as $sec) {
+                        if (isset($sec['map'][$docId])) {
+                            $sf = $sec['map'][$docId];
+                            $score += ($sec['idf'] * ($sf * 2.2) / ($sf + 1.2));
+                            $matchedSecondary = true;
                         }
                     }
-                } else {
-                    $collected = 0;
-                    $targetCandidates = max(20, $limit * 2);
 
-                    for ($i = 1; $i <= $anchorCount; $i++) {
-                        $docId = $anchorDocIds[$i];
+                    if ($matchedSecondary || $score >= $sharedTheta || count($candidateScores) < ($limit + $offset)) {
+                        $candidateScores[$docId] = $score;
+                        $topScoresHeap[] = $score;
 
-                        if ($this->tombstone->isDeleted($docId)) {
-                            continue;
-                        }
-                        if ($filterDocIds !== null && !isset($filterDocIds[$docId])) {
-                            continue;
-                        }
-
-                        $freq = $anchorFreqs[$i] ?? 1;
-                        $score = $primaryIdf * ($freq * 2.2) / ($freq + 1.2);
-
-                        if ($score >= $sharedTheta || $collected < $limit) {
-                            $candidateScores[$docId] = $score;
-                            $collected++;
-                            $topScoresHeap[] = $score;
-                            if (count($topScoresHeap) >= $limit) {
-                                sort($topScoresHeap);
-                                if (count($topScoresHeap) > $limit) {
-                                    array_shift($topScoresHeap);
-                                }
-                                $sharedTheta = max($sharedTheta, $topScoresHeap[0]);
+                        if (count($topScoresHeap) >= ($limit + $offset)) {
+                            sort($topScoresHeap);
+                            if (count($topScoresHeap) > ($limit + $offset)) {
+                                array_shift($topScoresHeap);
                             }
+                            $sharedTheta = max($sharedTheta, $topScoresHeap[0]);
+                        }
 
-                            if ($collected >= $targetCandidates) {
+                        if (count($candidateScores) >= $targetCandidates) {
+                            if ($fastPath || ($primaryU + $sumSecondaryU) <= $sharedTheta) {
                                 break;
                             }
-                        } elseif ($collected >= $limit) {
-                            if ($primaryU <= $sharedTheta) {
-                                break;
-                            }
+                        }
+
+                        if (count($topScoresHeap) >= ($limit + $offset) && $sharedTheta >= ($maxSegmentScore - 0.05)) {
+                            break; // Mathematically proven: no remaining document can exceed max theoretical bound
                         }
                     }
                 }
@@ -301,7 +287,7 @@ final class SegmentReader
 
             if (!empty($candidateScores)) {
                 arsort($candidateScores);
-                $gatedCandidateIds = array_slice(array_keys($candidateScores), 0, min(100, $limit * 2));
+                $gatedCandidateIds = array_slice(array_keys($candidateScores), 0, min(100, ($limit + $offset) * 2));
 
                 foreach ($gatedCandidateIds as $cId) {
                     $docVecOffset = $vecSectionOffset + ($cId * $dim);
@@ -314,14 +300,15 @@ final class SegmentReader
 
         // 4. Stage 3: Fusion or Single Ranking
         $rankedDocIds = [];
+        $neededCount = $limit + $offset;
         if (!empty($candidateScores) && !empty($vectorScores)) {
             $rankedDocIds = $this->rrf->fuse([
                 'bm25' => $candidateScores,
                 'vector' => $vectorScores,
-            ], $limit);
+            ], $neededCount);
         } elseif (!empty($candidateScores)) {
             arsort($candidateScores);
-            $rankedDocIds = array_slice($candidateScores, 0, $limit, true);
+            $rankedDocIds = array_slice($candidateScores, 0, $neededCount, true);
         }
 
         // 5. Materialize Results
