@@ -59,6 +59,11 @@ final class SegmentWriter
             $tokens = $this->tokenizer->tokenize($doc['text'] ?? '');
             $termFreqs = array_count_values($tokens);
 
+            // Synthetic document identity token for O(1) point deletions and key lookups
+            if (isset($doc['id'])) {
+                $termFreqs['_id#' . $doc['id']] = 1;
+            }
+
             // 3. Synthetic Filter tokens (for zero-cost filter matching)
             if (isset($doc['filters']) && is_array($doc['filters'])) {
                 foreach ($doc['filters'] as $key => $val) {

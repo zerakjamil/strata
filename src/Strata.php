@@ -11,14 +11,14 @@ use Strata\Scout\StrataBuilder;
 final class Strata
 {
     private string $storagePath;
-    private Manifest $manifest;
+    /** @var array<string, Manifest> */
+    private array $manifests = [];
     /** @var array<string, SegmentReader> */
     private array $readers = [];
 
     public function __construct(array $config = [])
     {
         $this->storagePath = $config['path'] ?? (getcwd() . '/storage/strata');
-        $this->manifest = Manifest::load($this->storagePath . '/manifest.json');
     }
 
     /**
@@ -30,7 +30,7 @@ final class Strata
     }
 
     /**
-     * Search across all active segments for an index.
+     * Search across all active segments for an index using Block-Max WAND pruning.
      *
      * @param string $index
      * @param string $query
@@ -48,9 +48,12 @@ final class Strata
         int $limit = 20,
         bool $fastPath = true
     ): array {
+        $manifest = $this->getManifest($index);
         $results = [];
+        $theta = 0.0;
+        $topScoresHeap = [];
 
-        foreach ($this->manifest->segments as $segMeta) {
+        foreach ($manifest->segments as $segMeta) {
             $path = $segMeta['path'];
             if (!isset($this->readers[$path])) {
                 if (!file_exists($path)) {
@@ -59,21 +62,27 @@ final class Strata
                 $this->readers[$path] = SegmentReader::open($path);
             }
 
+            // Propagate dynamic Block-Max WAND score threshold ($theta) across segments
             $segResults = $this->readers[$path]->search(
                 query: $query,
                 queryVector: $queryVector,
                 filters: $filters,
                 limit: $limit,
-                fastPath: $fastPath
+                fastPath: $fastPath,
+                sharedTheta: $theta
             );
 
             foreach ($segResults as $r) {
                 $results[] = $r;
-            }
-
-            // Early-exit across segments when sufficient top-scoring candidates are collected
-            if (count($results) >= $limit * 2) {
-                break;
+                $score = (float)($r['_score'] ?? 0.0);
+                $topScoresHeap[] = $score;
+                if (count($topScoresHeap) >= $limit) {
+                    sort($topScoresHeap);
+                    if (count($topScoresHeap) > $limit) {
+                        array_shift($topScoresHeap);
+                    }
+                    $theta = max($theta, $topScoresHeap[0]);
+                }
             }
         }
 
@@ -87,13 +96,70 @@ final class Strata
         return $results;
     }
 
-    public function getManifest(): Manifest
+    /**
+     * Tombstone documents by external model keys across all segments in an index.
+     *
+     * @param array<int|string> $keys
+     * @param string $index
+     * @return int Total documents marked deleted
+     */
+    public function deleteKeys(array $keys, string $index = 'default'): int
     {
-        return $this->manifest;
+        $deletedTotal = 0;
+        $manifest = $this->getManifest($index);
+
+        foreach ($manifest->segments as $segMeta) {
+            $path = $segMeta['path'];
+            if (!file_exists($path)) {
+                continue;
+            }
+
+            if (!isset($this->readers[$path])) {
+                $this->readers[$path] = SegmentReader::open($path);
+            }
+
+            $reader = $this->readers[$path];
+
+            foreach ($keys as $key) {
+                $internalDocId = $reader->findDocIndexByKey($key);
+                if ($internalDocId !== null && !$reader->isDeleted($internalDocId)) {
+                    $reader->markDeletedByDocId($internalDocId);
+                    $deletedTotal++;
+                }
+            }
+        }
+
+        return $deletedTotal;
     }
 
-    public function getStoragePath(): string
+    public function getManifest(string $index = 'default'): Manifest
     {
-        return $this->storagePath;
+        if (!isset($this->manifests[$index])) {
+            $indexPath = $this->getStoragePath($index);
+            $manifestFile = $indexPath . '/manifest.json';
+
+            if (file_exists($manifestFile)) {
+                $this->manifests[$index] = Manifest::load($manifestFile);
+            } else {
+                // Fallback to root storage directory for backward compatibility with default benchmarks
+                $rootManifest = $this->storagePath . '/manifest.json';
+                if (file_exists($rootManifest)) {
+                    $this->manifests[$index] = Manifest::load($rootManifest);
+                } else {
+                    $this->manifests[$index] = new Manifest();
+                }
+            }
+        }
+
+        return $this->manifests[$index];
+    }
+
+    public function getStoragePath(string $index = ''): string
+    {
+        if ($index === '' || $index === 'default') {
+            return $this->storagePath;
+        }
+
+        return $this->storagePath . '/' . $index;
     }
 }

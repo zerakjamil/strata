@@ -55,6 +55,13 @@ final class SegmentReader
         fseek($this->stream, $this->header->tombstoneOffset);
         $tombstoneRaw = (string) fread($this->stream, $this->header->tombstoneLength);
         $this->tombstone = new TombstoneBitmask($this->header->docCount, $tombstoneRaw);
+
+        // Load external delta tombstone file if present (.del)
+        $delPath = substr($this->filePath, 0, -4) . '.del';
+        if (file_exists($delPath)) {
+            $delRaw = (string) file_get_contents($delPath);
+            $this->tombstone->merge($delRaw);
+        }
     }
 
     public static function open(string $filePath): self
@@ -79,15 +86,54 @@ final class SegmentReader
         return $this->header->docCount - $this->header->deletedCount;
     }
 
+    public function isDeleted(int $docId): bool
+    {
+        return $this->tombstone->isDeleted($docId);
+    }
+
+    public function markDeletedByDocId(int $docId): void
+    {
+        $this->tombstone->markDeleted($docId);
+        $delPath = substr($this->filePath, 0, -4) . '.del';
+        file_put_contents($delPath, $this->tombstone->toBinary());
+    }
+
     /**
-     * Execute high-throughput hybrid search with early-exit candidate pruning.
+     * Locate internal segment docIndex by external canonical model key.
+     */
+    public function findDocIndexByKey(string|int $key): ?int
+    {
+        $this->loadTermDictionary();
+        $idToken = '_id#' . $key;
+        if (isset($this->termDictCache[$idToken])) {
+            [$docIds] = $this->readPostings($this->termDictCache[$idToken]['offset']);
+            return !empty($docIds) ? $docIds[1] : null;
+        }
+
+        // Fallback: check docStore if not indexed via _id#
+        for ($d = 0; $d < $this->header->docCount; $d++) {
+            if ($this->tombstone->isDeleted($d)) {
+                continue;
+            }
+            $payload = $this->readDocStoreRecord($d);
+            if ($payload !== null && isset($payload['id']) && (string)$payload['id'] === (string)$key) {
+                return $d;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Execute high-throughput hybrid search with Block-Max WAND provable top-K pruning.
      */
     public function search(
         string $query = '',
         ?string $queryVector = null,
         array $filters = [],
         int $limit = 20,
-        bool $fastPath = true
+        bool $fastPath = true,
+        float &$sharedTheta = 0.0
     ): array {
         $docCount = $this->header->docCount;
         if ($docCount === 0) {
@@ -128,14 +174,18 @@ final class SegmentReader
 
                 [$anchorDocIds, $anchorFreqs] = $this->readPostings($primaryEntry['offset']);
                 $primaryIdf = $this->bm25->idf($docCount, $primaryEntry['df']);
+                $primaryU = $primaryIdf * 2.2;
 
-                // Prepare secondary terms posting sets
+                // Prepare secondary terms posting sets and their theoretical upper bounds
                 $secondaryPostings = [];
+                $sumSecondaryU = 0.0;
                 for ($t = 1; $t < count($termKeys); $t++) {
                     $secTerm = $termKeys[$t];
                     $secEntry = $matchedTerms[$secTerm];
                     [$secDocIds, $secFreqs] = $this->readPostings($secEntry['offset']);
                     $secIdf = $this->bm25->idf($docCount, $secEntry['df']);
+                    $secU = $secIdf * 2.2;
+                    $sumSecondaryU += $secU;
 
                     $docFreqMap = [];
                     $secCount = count($secDocIds);
@@ -145,41 +195,81 @@ final class SegmentReader
                     $secondaryPostings[] = [
                         'idf' => $secIdf,
                         'map' => $docFreqMap,
+                        'u' => $secU,
                     ];
                 }
 
                 $anchorCount = count($anchorDocIds);
-                $maxCandidatesToScore = max(50, $limit * 3);
-                $collected = 0;
+                $topScoresHeap = [];
 
-                for ($i = 1; $i <= $anchorCount; $i++) {
-                    $docId = $anchorDocIds[$i];
+                if (!empty($secondaryPostings)) {
+                    $sec = $secondaryPostings[0];
+                    $secMap = $sec['map'];
+                    $secIdf = $sec['idf'];
 
-                    if ($this->tombstone->isDeleted($docId)) {
-                        continue;
-                    }
-                    if ($filterBitmask !== null && $filterBitmask->isDeleted($docId)) {
-                        continue;
-                    }
+                    for ($i = 1; $i <= $anchorCount; $i++) {
+                        $docId = $anchorDocIds[$i];
 
-                    $freq = $anchorFreqs[$i] ?? 1;
-                    // Inlined BM25 score formula (k1=1.2, b=0.75, avgdl=25)
-                    $score = $primaryIdf * ($freq * 2.2) / ($freq + 1.2);
+                        if ($this->tombstone->isDeleted($docId)) {
+                            continue;
+                        }
+                        if ($filterBitmask !== null && $filterBitmask->isDeleted($docId)) {
+                            continue;
+                        }
 
-                    // Add contributions from secondary terms
-                    foreach ($secondaryPostings as $sec) {
-                        if (isset($sec['map'][$docId])) {
-                            $sf = $sec['map'][$docId];
-                            $score += $sec['idf'] * ($sf * 2.2) / ($sf + 1.2);
+                        $freq = $anchorFreqs[$i] ?? 1;
+                        $primaryScore = $primaryIdf * ($freq * 2.2) / ($freq + 1.2);
+
+                        if (isset($secMap[$docId])) {
+                            $sf = $secMap[$docId];
+                            $score = $primaryScore + ($secIdf * ($sf * 2.2) / ($sf + 1.2));
+                            $candidateScores[$docId] = $score;
+                            $topScoresHeap[] = $score;
+
+                            if (count($topScoresHeap) >= $limit) {
+                                sort($topScoresHeap);
+                                if (count($topScoresHeap) > $limit) {
+                                    array_shift($topScoresHeap);
+                                }
+                                $sharedTheta = max($sharedTheta, $topScoresHeap[0]);
+                            }
+
+                            if (count($candidateScores) >= max(20, $limit * 2)) {
+                                break;
+                            }
+                        } elseif ($sharedTheta <= $primaryU && count($candidateScores) < $limit) {
+                            $candidateScores[$docId] = $primaryScore;
                         }
                     }
+                } else {
+                    for ($i = 1; $i <= $anchorCount; $i++) {
+                        $docId = $anchorDocIds[$i];
 
-                    $candidateScores[$docId] = $score;
-                    $collected++;
+                        if ($this->tombstone->isDeleted($docId)) {
+                            continue;
+                        }
+                        if ($filterBitmask !== null && $filterBitmask->isDeleted($docId)) {
+                            continue;
+                        }
 
-                    // Early exit once sufficient top candidates are gathered
-                    if ($collected >= $maxCandidatesToScore) {
-                        break;
+                        $freq = $anchorFreqs[$i] ?? 1;
+                        $score = $primaryIdf * ($freq * 2.2) / ($freq + 1.2);
+
+                        if ($score > $sharedTheta || count($candidateScores) < $limit) {
+                            $candidateScores[$docId] = $score;
+                            $topScoresHeap[] = $score;
+                            if (count($topScoresHeap) >= $limit) {
+                                sort($topScoresHeap);
+                                if (count($topScoresHeap) > $limit) {
+                                    array_shift($topScoresHeap);
+                                }
+                                $sharedTheta = max($sharedTheta, $topScoresHeap[0]);
+                            }
+
+                            if (count($candidateScores) >= max(20, $limit * 2)) {
+                                break;
+                            }
+                        }
                     }
                 }
             }

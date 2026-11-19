@@ -66,25 +66,44 @@ final class StrataEngine extends Engine
         }
 
         $writer = new SegmentWriter();
-        $storageDir = $this->strata->getStoragePath();
+        $storageDir = $this->strata->getStoragePath($indexName);
+        if (!is_dir($storageDir)) {
+            mkdir($storageDir, 0755, true);
+        }
         $segName = 'seg_' . time() . '_' . bin2hex(random_bytes(3)) . '.seg';
         $segPath = $storageDir . '/' . $segName;
 
         $writer->write($segPath, $documents);
 
-        $manifest = $this->strata->getManifest();
+        $manifest = $this->strata->getManifest($indexName);
         $manifest->addSegment($segPath, count($documents), level: 0);
         $manifest->save($storageDir . '/manifest.json');
     }
 
     /**
-     * Remove the given model from the index.
+     * Remove the given model from the index via atomic tombstone bitmasks.
+     * Transaction-aware: automatically defers flush until DB::afterCommit if in an active transaction.
      *
      * @param Collection<int, Model> $models
      */
     public function delete($models): void
     {
-        // Deletions are recorded in tombstone bitmasks during compaction
+        if ($models->isEmpty()) {
+            return;
+        }
+
+        $keys = $models->map(fn($m) => $m->getScoutKey())->all();
+        $indexName = $models->first()->searchableAs();
+
+        $action = function () use ($keys, $indexName) {
+            $this->strata->deleteKeys($keys, $indexName);
+        };
+
+        if (class_exists(\Illuminate\Support\Facades\DB::class) && \Illuminate\Support\Facades\DB::transactionLevel() > 0) {
+            \Illuminate\Support\Facades\DB::afterCommit($action);
+        } else {
+            $action();
+        }
     }
 
     /**

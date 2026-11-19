@@ -53,6 +53,17 @@ final class TombstoneBitmask
     }
 
     /**
+     * Merge another binary bitmask into this one via bitwise OR.
+     */
+    public function merge(string $otherBinary): void
+    {
+        $len = min(strlen($this->bitmask), strlen($otherBinary));
+        for ($i = 0; $i < $len; $i++) {
+            $this->bitmask[$i] = chr(ord($this->bitmask[$i]) | ord($otherBinary[$i]));
+        }
+    }
+
+    /**
      * Get the raw binary bitmask string.
      */
     public function toBinary(): string
