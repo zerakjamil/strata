@@ -1,0 +1,89 @@
+[
+  {
+    "v": 2,
+    "name": "Project 1: Strata Search Engine (Port 8001)",
+    "folders": [],
+    "requests": [
+      {
+        "v": "1",
+        "name": "1. Fast-Path Search (mechanical keyboard)",
+        "method": "GET",
+        "endpoint": "<<base_url>>/api/search",
+        "params": [
+          { "key": "q", "value": "mechanical keyboard", "active": true },
+          { "key": "limit", "value": "10", "active": true },
+          { "key": "index", "value": "products", "active": true }
+        ],
+        "headers": []
+      },
+      {
+        "v": "1",
+        "name": "2. Sub-Millisecond Search (wireless)",
+        "method": "GET",
+        "endpoint": "<<base_url>>/api/search",
+        "params": [
+          { "key": "q", "value": "wireless", "active": true },
+          { "key": "limit", "value": "10", "active": true },
+          { "key": "index", "value": "products", "active": true }
+        ],
+        "headers": []
+      },
+      {
+        "v": "1",
+        "name": "3. Live Side-by-Side Compare (Strata vs PostgreSQL)",
+        "method": "GET",
+        "endpoint": "<<base_url>>/api/compare",
+        "params": [
+          { "key": "q", "value": "mechanical keyboard", "active": true },
+          { "key": "limit", "value": "10", "active": true },
+          { "key": "index", "value": "products", "active": true }
+        ],
+        "headers": []
+      },
+      {
+        "v": "1",
+        "name": "4. Filtered Query (Gaming + In-Stock)",
+        "method": "GET",
+        "endpoint": "<<base_url>>/api/search",
+        "params": [
+          { "key": "q", "value": "Gaming", "active": true },
+          { "key": "status", "value": "active", "active": true },
+          { "key": "limit", "value": "10", "active": true },
+          { "key": "index", "value": "products", "active": true }
+        ],
+        "headers": []
+      },
+      {
+        "v": "1",
+        "name": "5. Atomic Tombstone Deletion (Scout delete())",
+        "method": "POST",
+        "endpoint": "<<base_url>>/api/delete",
+        "params": [
+          { "key": "id", "value": "1600037", "active": true },
+          { "key": "index", "value": "products", "active": true }
+        ],
+        "headers": []
+      },
+      {
+        "v": "1",
+        "name": "6. Verify Deleted Document Excluded",
+        "method": "GET",
+        "endpoint": "<<base_url>>/api/search",
+        "params": [
+          { "key": "q", "value": "Mechanical Keyboard eveniet Edition", "active": true },
+          { "key": "limit", "value": "10", "active": true },
+          { "key": "index", "value": "products", "active": true }
+        ],
+        "headers": []
+      },
+      {
+        "v": "1",
+        "name": "7. Service Health Check",
+        "method": "GET",
+        "endpoint": "<<base_url>>/api/health",
+        "params": [],
+        "headers": []
+      }
+    ]
+  }
+]

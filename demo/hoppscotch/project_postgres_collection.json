@@ -1,0 +1,51 @@
+[
+  {
+    "v": 2,
+    "name": "Project 2: PostgreSQL GIN Baseline (Port 8002)",
+    "folders": [],
+    "requests": [
+      {
+        "v": "1",
+        "name": "1. PostgreSQL Full-Text Search (mechanical keyboard)",
+        "method": "GET",
+        "endpoint": "<<base_url>>/api/search",
+        "params": [
+          { "key": "q", "value": "mechanical keyboard", "active": true },
+          { "key": "limit", "value": "10", "active": true }
+        ],
+        "headers": []
+      },
+      {
+        "v": "1",
+        "name": "2. PostgreSQL Single Term Search (wireless)",
+        "method": "GET",
+        "endpoint": "<<base_url>>/api/search",
+        "params": [
+          { "key": "q", "value": "wireless", "active": true },
+          { "key": "limit", "value": "10", "active": true }
+        ],
+        "headers": []
+      },
+      {
+        "v": "1",
+        "name": "3. PostgreSQL Filtered Query (active products)",
+        "method": "GET",
+        "endpoint": "<<base_url>>/api/search",
+        "params": [
+          { "key": "q", "value": "chair", "active": true },
+          { "key": "status", "value": "active", "active": true },
+          { "key": "limit", "value": "10", "active": true }
+        ],
+        "headers": []
+      },
+      {
+        "v": "1",
+        "name": "4. Service Health Check",
+        "method": "GET",
+        "endpoint": "<<base_url>>/api/health",
+        "params": [],
+        "headers": []
+      }
+    ]
+  }
+]

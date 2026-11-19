@@ -17,9 +17,15 @@ if ($uri === '/api/health') {
     exit;
 }
 
-$storageDir = getenv('STRATA_PATH') ?: (__DIR__ . '/../vendor/orchestra/testbench-core/laravel/storage/strata');
-if (!file_exists($storageDir . '/manifest.json') && file_exists(__DIR__ . '/../storage/strata/manifest.json')) {
-    $storageDir = __DIR__ . '/../storage/strata';
+$storageDir = getenv('STRATA_PATH');
+if (!$storageDir || !file_exists($storageDir . '/manifest.json')) {
+    if (file_exists('/app/storage/strata/manifest.json')) {
+        $storageDir = '/app/storage/strata';
+    } elseif (file_exists(__DIR__ . '/../storage/strata/manifest.json')) {
+        $storageDir = __DIR__ . '/../storage/strata';
+    } else {
+        $storageDir = __DIR__ . '/../vendor/orchestra/testbench-core/laravel/storage/strata';
+    }
 }
 
 static $strata = null;

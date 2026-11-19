@@ -41,8 +41,22 @@ final class Manifest
             return new self();
         }
 
+        $dir = dirname($manifestPath);
+        $segments = $data['segments'] ?? [];
+
+        // Automatic Environment Portability: If recorded path does not exist, resolve relative to manifest directory
+        foreach ($segments as &$seg) {
+            if (!empty($seg['path']) && !file_exists($seg['path'])) {
+                $candidate = $dir . '/' . basename($seg['path']);
+                if (file_exists($candidate)) {
+                    $seg['path'] = $candidate;
+                }
+            }
+        }
+        unset($seg);
+
         return new self(
-            segments: $data['segments'] ?? [],
+            segments: $segments,
             totalDocs: (int)($data['total_docs'] ?? 0),
             generation: (int)($data['generation'] ?? 1)
         );

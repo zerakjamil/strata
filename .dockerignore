@@ -1,0 +1,6 @@
+.git
+.github
+*.seg
+*.del
+storage/strata
+vendor/orchestra/testbench-core/laravel/storage/strata
