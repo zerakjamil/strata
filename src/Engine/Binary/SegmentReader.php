@@ -115,17 +115,6 @@ final class SegmentReader
             return !empty($docIds) ? $docIds[1] : null;
         }
 
-        // Fallback: check docStore if not indexed via _id#
-        for ($d = 0; $d < $this->header->docCount; $d++) {
-            if ($this->tombstone->isDeleted($d)) {
-                continue;
-            }
-            $payload = $this->readDocStoreRecord($d);
-            if ($payload !== null && isset($payload['id']) && (string)$payload['id'] === (string)$key) {
-                return $d;
-            }
-        }
-
         return null;
     }
 
@@ -145,11 +134,11 @@ final class SegmentReader
             return [];
         }
 
-        // 1. Evaluate filter bitmask (if any filters supplied)
-        $filterBitmask = null;
+        // 1. Evaluate filter set (if any filters supplied)
+        $filterDocIds = null;
         if (!empty($filters)) {
-            $filterBitmask = $this->evaluateFilters($filters);
-            if ($filterBitmask !== null && $filterBitmask->deletedCount() === $docCount) {
+            $filterDocIds = $this->evaluateFilters($filters);
+            if ($filterDocIds !== null && empty($filterDocIds)) {
                 return [];
             }
         }
@@ -176,9 +165,26 @@ final class SegmentReader
                 $primaryTerm = $termKeys[0];
                 $primaryEntry = $matchedTerms[$primaryTerm];
 
-                [$anchorDocIds, $anchorFreqs] = $this->readPostings($primaryEntry['offset']);
                 $primaryIdf = $this->bm25->idf($docCount, $primaryEntry['df']);
                 $primaryU = $primaryIdf * 2.2;
+
+                // Compute Segment-level Block-Max upper bound before reading any postings
+                $maxSegmentScore = $primaryU;
+                $secondaryIdfs = [];
+                for ($t = 1; $t < count($termKeys); $t++) {
+                    $secTerm = $termKeys[$t];
+                    $secEntry = $matchedTerms[$secTerm];
+                    $sIdf = $this->bm25->idf($docCount, $secEntry['df']);
+                    $secondaryIdfs[$t] = $sIdf;
+                    $maxSegmentScore += ($sIdf * 2.2);
+                }
+
+                // If this segment cannot beat the current global K-th best score, prune segment completely
+                if ($sharedTheta > 0.0 && $maxSegmentScore <= $sharedTheta) {
+                    return [];
+                }
+
+                [$anchorDocIds, $anchorFreqs] = $this->readPostings($primaryEntry['offset']);
 
                 // Prepare secondary terms posting sets and their theoretical upper bounds
                 $secondaryPostings = [];
@@ -187,7 +193,7 @@ final class SegmentReader
                     $secTerm = $termKeys[$t];
                     $secEntry = $matchedTerms[$secTerm];
                     [$secDocIds, $secFreqs] = $this->readPostings($secEntry['offset']);
-                    $secIdf = $this->bm25->idf($docCount, $secEntry['df']);
+                    $secIdf = $secondaryIdfs[$t] ?? $this->bm25->idf($docCount, $secEntry['df']);
                     $secU = $secIdf * 2.2;
                     $sumSecondaryU += $secU;
 
@@ -217,7 +223,7 @@ final class SegmentReader
                         if ($this->tombstone->isDeleted($docId)) {
                             continue;
                         }
-                        if ($filterBitmask !== null && $filterBitmask->isDeleted($docId)) {
+                        if ($filterDocIds !== null && !isset($filterDocIds[$docId])) {
                             continue;
                         }
 
@@ -255,14 +261,14 @@ final class SegmentReader
                         if ($this->tombstone->isDeleted($docId)) {
                             continue;
                         }
-                        if ($filterBitmask !== null && $filterBitmask->isDeleted($docId)) {
+                        if ($filterDocIds !== null && !isset($filterDocIds[$docId])) {
                             continue;
                         }
 
                         $freq = $anchorFreqs[$i] ?? 1;
                         $score = $primaryIdf * ($freq * 2.2) / ($freq + 1.2);
 
-                        if ($score > $sharedTheta || $collected < $limit) {
+                        if ($score >= $sharedTheta || $collected < $limit) {
                             $candidateScores[$docId] = $score;
                             $collected++;
                             $topScoresHeap[] = $score;
@@ -406,12 +412,13 @@ final class SegmentReader
     }
 
     /**
-     * Evaluate discrete filters.
+     * Evaluate discrete filters and return document ID map.
+     *
+     * @param array<string, scalar> $filters
+     * @return array<int, true>|null Null if no filters; empty array if zero matches; otherwise docId map
      */
-    private function evaluateFilters(array $filters): TombstoneBitmask
+    private function evaluateFilters(array $filters): ?array
     {
-        $docCount = $this->header->docCount;
-        $matchingMask = new TombstoneBitmask($docCount);
         $matchingDocIds = null;
 
         foreach ($filters as $key => $val) {
@@ -419,26 +426,26 @@ final class SegmentReader
             $entry = $this->getTermEntry($filterToken);
 
             if ($entry === null) {
-                return new TombstoneBitmask($docCount, str_repeat("\xFF", (int)ceil($docCount / 8)));
+                return [];
             }
 
             [$postDocIds] = $this->readPostings($entry['offset']);
-            $currentIds = array_fill_keys($postDocIds, true);
+            if (empty($postDocIds)) {
+                return [];
+            }
 
+            $currentIds = array_fill_keys($postDocIds, true);
             if ($matchingDocIds === null) {
                 $matchingDocIds = $currentIds;
             } else {
                 $matchingDocIds = array_intersect_key($matchingDocIds, $currentIds);
+                if (empty($matchingDocIds)) {
+                    return [];
+                }
             }
         }
 
-        for ($d = 0; $d < $docCount; $d++) {
-            if (!isset($matchingDocIds[$d])) {
-                $matchingMask->markDeleted($d);
-            }
-        }
-
-        return $matchingMask;
+        return $matchingDocIds;
     }
 
     /**
