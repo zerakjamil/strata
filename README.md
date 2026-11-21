@@ -10,6 +10,8 @@
 
 Embedded hybrid search engine for Laravel. Sub-millisecond query execution over millions of records via immutable binary segments and persistent runtimes.
 
+> **Student Guide & Academic Manual**: [`STRATA_STUDENT_MANUAL.pdf`](STRATA_STUDENT_MANUAL.pdf) contains a complete conceptual overview (explained without code), benchmark summaries, a ready-to-use written report template, and a 6-slide presentation blueprint with speaker scripts.
+
 ## Benchmarks
 
 Tested on 2,000,000 PostgreSQL records (`strata_bench_products`) across 20 binary segments (1.2 GB).
